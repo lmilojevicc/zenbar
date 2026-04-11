@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "Zenbar",
+  "version": "0.1.0",
+  "description": "Floating command bar for Chromium browsers.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "search"
+  ],
+  "optional_permissions": [
+    "bookmarks",
+    "history"
+  ],
+  "optional_host_permissions": [
+    "https://duckduckgo.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "commands": {
+    "open-current-tab-mode": {
+      "suggested_key": {
+        "default": "Ctrl+L",
+        "mac": "Command+L"
+      },
+      "description": "Edit the current tab URL or search in this tab"
+    },
+    "open-new-tab-mode": {
+      "suggested_key": {
+        "default": "Ctrl+T",
+        "mac": "Command+T"
+      },
+      "description": "Open a destination or search in a new tab"
+    },
+    "open-tab-search-mode": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Search and switch between open tabs"
+    }
+  },
+  "options_ui": {
+    "page": "ui/options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Zenbar"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "styles/*.css",
+        "src/ui/*.js",
+        "src/shared/*.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

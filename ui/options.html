@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zenbar Settings</title>
+    <link rel="stylesheet" href="../styles/options.css" />
+  </head>
+  <body>
+    <main class="options-shell">
+      <section class="options-hero card">
+        <h1>Settings</h1>
+        <p>
+          Zenbar uses custom extension shortcuts, not native browser URL bar takeovers. Search execution still uses your browser default engine.
+        </p>
+      </section>
+
+      <section class="options-grid">
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Results</p>
+              <h2>Sources</h2>
+            </div>
+          </div>
+          <div id="sources"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Ranking</p>
+              <h2>Weights</h2>
+            </div>
+          </div>
+          <div id="weights"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Suggestions</p>
+              <h2>Remote provider</h2>
+            </div>
+          </div>
+          <div id="suggestions"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Shortcuts</p>
+              <h2>Command bindings</h2>
+            </div>
+            <button id="change-shortcuts" class="ghost-button" type="button">Change Shortcuts</button>
+          </div>
+          <div id="shortcuts"></div>
+        </section>
+
+        <section class="card card--full">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Transfer</p>
+              <h2>Import or export</h2>
+            </div>
+          </div>
+          <div class="transfer-actions">
+            <button id="export-settings" class="primary-button" type="button">Export JSON</button>
+            <button id="import-settings" class="ghost-button" type="button">Import JSON</button>
+          </div>
+          <p class="note">
+            Settings stay local to this browser profile. Bookmarks, history, and DuckDuckGo suggestions remain opt-in permissions.
+          </p>
+          <input id="import-file" type="file" accept="application/json" hidden />
+        </section>
+      </section>
+
+      <p id="status" class="status" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="../src/ui/options.js"></script>
+  </body>
+</html>

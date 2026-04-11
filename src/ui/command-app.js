@@ -1,0 +1,588 @@
+import { MODE_META, MODES } from "../shared/constants.js";
+
+const ICONS = {
+  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m15.2 15.2 4.05 4.05" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/></svg>',
+  tab: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 6.75h14.5a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5v-7.5a1.5 1.5 0 0 1 1.5-1.5Zm0 0 3 3h13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.75h6M10 4.75v4.1l-2.75 2.75v1.4h9.5v-1.4L14 8.85v-4.1M12 13v6.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
+  bookmark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.25 5.25h9.5a1 1 0 0 1 1 1v12l-5.75-3.25-5.75 3.25v-12a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/></svg>',
+  history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 12a7.25 7.25 0 1 0 2.12-5.13M4.75 4.75v3.62h3.62M12 8.5v4.25l2.75 1.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.25a7.75 7.75 0 1 0 0 15.5a7.75 7.75 0 0 0 0-15.5Zm-6.5 7.75h13M12 4.5c1.8 1.9 2.75 4.4 2.75 7.5S13.8 17.6 12 19.5M12 4.5C10.2 6.4 9.25 8.9 9.25 12s.95 5.6 2.75 7.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
+  spark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4.5 1.25 3.75L17 9.5l-3.75 1.25L12 14.5l-1.25-3.75L7 9.5l3.75-1.25L12 4.5Zm5 9.75.6 1.65 1.65.6-1.65.6-.6 1.65-.6-1.65-1.65-.6 1.65-.6.6-1.65ZM6.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>'
+};
+
+const iconUrlCache = new Map();
+
+export function mountCommandSurface({ root, surface = "overlay", closeSurface }) {
+  const clientId = crypto.randomUUID();
+
+  let mode = MODES.CURRENT_TAB;
+  let contextTabId = null;
+  let currentTab = null;
+  let results = [];
+  let highlightedIndex = 0;
+  let loading = false;
+  let submitting = false;
+  let searchTimer = 0;
+  let searchVersion = 0;
+  let statusMessage = "";
+
+  root.innerHTML = `
+    <section class="zenbar zenbar--${surface}">
+      <button class="zenbar__backdrop" data-action="dismiss" type="button" aria-label="Close Zenbar"></button>
+      <div class="zenbar__panel" role="dialog" aria-modal="true" aria-label="Zenbar command bar">
+        <div class="zenbar__heading">
+          <div class="zenbar__heading-copy">
+            <p class="zenbar__eyebrow">Zenbar</p>
+            <h1 class="zenbar__mode"></h1>
+          </div>
+          <button class="zenbar__dismiss" data-action="dismiss" type="button">Esc</button>
+        </div>
+        <label class="zenbar__input-shell">
+          <span class="zenbar__input-icon" aria-hidden="true">${ICONS.search}</span>
+          <input class="zenbar__input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        </label>
+        <p class="zenbar__helper"></p>
+        <div class="zenbar__results" role="listbox"></div>
+      </div>
+    </section>
+  `;
+
+  const container = root.querySelector(".zenbar");
+  const backdrop = root.querySelector(".zenbar__backdrop");
+  const modeLabel = root.querySelector(".zenbar__mode");
+  const helper = root.querySelector(".zenbar__helper");
+  const input = root.querySelector(".zenbar__input");
+  const inputShell = root.querySelector(".zenbar__input-shell");
+  const resultsHost = root.querySelector(".zenbar__results");
+
+  backdrop.hidden = surface !== "overlay";
+
+  root.querySelectorAll('[data-action="dismiss"]').forEach((button) => {
+    button.addEventListener("click", dismiss);
+  });
+  input.addEventListener("input", handleInput);
+  input.addEventListener("keydown", handleKeydown);
+  resultsHost.addEventListener("click", handleResultsClick);
+  resultsHost.addEventListener("mouseover", handleResultsHover);
+
+  renderChrome();
+  renderResults();
+
+  return {
+    open
+  };
+
+  async function open(payload = {}) {
+    mode = payload.mode || MODES.CURRENT_TAB;
+    contextTabId = Number(payload.contextTabId) || null;
+    statusMessage = "";
+    searchVersion += 1;
+
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/get-context",
+      payload: {
+        mode,
+        contextTabId
+      }
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "Unable to open Zenbar");
+    }
+
+    currentTab = response.context.currentTab;
+    input.value = mode === MODES.CURRENT_TAB ? currentTab?.url || "" : "";
+    results = [];
+    highlightedIndex = 0;
+    loading = false;
+    renderChrome();
+    renderResults();
+    queueSearch(true);
+    restoreInputFocus(mode === MODES.CURRENT_TAB);
+  }
+
+  function renderChrome() {
+    const meta = MODE_META[mode] || MODE_META[MODES.CURRENT_TAB];
+    const isBusy = loading ? " zenbar__input-shell--busy" : "";
+
+    container.dataset.mode = mode;
+    modeLabel.textContent = meta.label;
+    helper.textContent = statusMessage || meta.helper;
+    input.placeholder = meta.placeholder;
+
+    inputShell.className = `zenbar__input-shell${isBusy}`;
+  }
+
+  function renderResults() {
+    renderChrome();
+    resultsHost.textContent = "";
+
+    resultsHost.classList.toggle("zenbar__results--busy", loading && results.length > 0);
+
+    if (loading && results.length > 0) {
+      renderResultRows();
+      return;
+    }
+
+    if (loading) {
+      const loadingState = document.createElement("div");
+      loadingState.className = "zenbar__empty zenbar__empty--loading";
+      loadingState.innerHTML = `
+        <strong>Refreshing results</strong>
+        <span>Looking for the best match for your current query.</span>
+      `;
+      resultsHost.append(loadingState);
+      return;
+    }
+
+    if (!results.length) {
+      const emptyState = document.createElement("div");
+      emptyState.className = "zenbar__empty";
+      emptyState.innerHTML = getEmptyStateMarkup();
+      resultsHost.append(emptyState);
+      return;
+    }
+
+    renderResultRows();
+  }
+
+  function renderResultRows() {
+    highlightedIndex = Math.min(highlightedIndex, results.length - 1);
+    highlightedIndex = Math.max(highlightedIndex, 0);
+
+    const fragment = document.createDocumentFragment();
+
+    results.forEach((result, index) => {
+      const row = document.createElement("div");
+      row.className = `zenbar-result-row${index === highlightedIndex ? " zenbar-result-row--active" : ""}`;
+      row.dataset.resultIndex = String(index);
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", index === highlightedIndex ? "true" : "false");
+
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "zenbar-result";
+
+      const icon = document.createElement("span");
+      icon.className = "zenbar-result__icon";
+      appendIcon(icon, result);
+
+      const copy = document.createElement("span");
+      copy.className = "zenbar-result__copy";
+
+      const title = document.createElement("span");
+      title.className = "zenbar-result__title";
+      title.textContent = result.title || result.queryText || result.url || "Untitled result";
+
+      const subtitle = document.createElement("span");
+      subtitle.className = "zenbar-result__subtitle";
+      subtitle.textContent = result.subtitle || subtitleForResult(result);
+
+      copy.append(title, subtitle);
+
+      const meta = document.createElement("span");
+      meta.className = "zenbar-result__meta";
+
+      for (const badge of badgesForResult(result)) {
+        meta.append(buildBadge(badge));
+      }
+
+      trigger.append(icon, copy);
+      row.append(trigger, meta);
+
+      if (result.closeable && result.tabId) {
+        const closeButton = document.createElement("button");
+        closeButton.type = "button";
+        closeButton.className = "zenbar-result__close";
+        closeButton.dataset.closeTab = String(index);
+        closeButton.dataset.resultIndex = String(index);
+        closeButton.textContent = "x";
+        closeButton.setAttribute("aria-label", `Close ${result.title || "tab"}`);
+        meta.append(closeButton);
+      }
+
+      fragment.append(row);
+    });
+
+    resultsHost.append(fragment);
+  }
+
+  function getEmptyStateMarkup() {
+    if (mode === MODES.TAB_SEARCH) {
+      return input.value.trim()
+        ? "<strong>No matching tabs</strong><span>Try a shorter title, URL fragment, or switch windows.</span>"
+        : "<strong>Ready to jump</strong><span>Your other open tabs will appear here as soon as you type.</span>";
+    }
+
+    return input.value.trim()
+      ? "<strong>No direct matches yet</strong><span>Press Enter to use your typed query with your default search engine.</span>"
+      : "<strong>Start typing</strong><span>Search, navigate, or jump to a result from this calm command space.</span>";
+  }
+
+  function queueSearch(immediate = false) {
+    clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(runSearch, immediate ? 0 : 140);
+  }
+
+  async function runSearch() {
+    const requestId = ++searchVersion;
+    loading = true;
+    renderResults();
+
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/query",
+      payload: {
+        mode,
+        query: input.value,
+        contextTabId,
+        clientId
+      }
+    });
+
+    if (requestId !== searchVersion) {
+      return;
+    }
+
+    loading = false;
+
+    if (!response?.ok) {
+      statusMessage = response?.error || "Unable to fetch results.";
+      results = [];
+      renderResults();
+      return;
+    }
+
+    statusMessage = "";
+    results = Array.isArray(response.results) ? response.results : [];
+    renderResults();
+  }
+
+  function handleInput() {
+    highlightedIndex = 0;
+    statusMessage = "";
+    queueSearch(false);
+  }
+
+  async function handleKeydown(event) {
+    if (event.key === "ArrowDown" && results.length) {
+      event.preventDefault();
+      highlightedIndex = (highlightedIndex + 1) % results.length;
+      renderResults();
+      return;
+    }
+
+    if (event.key === "ArrowUp" && results.length) {
+      event.preventDefault();
+      highlightedIndex = (highlightedIndex - 1 + results.length) % results.length;
+      renderResults();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await submitSelection();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dismiss();
+      return;
+    }
+
+    if (
+      mode === MODES.TAB_SEARCH &&
+      (event.metaKey || event.ctrlKey) &&
+      event.key.toLowerCase() === "x"
+    ) {
+      event.preventDefault();
+      await closeHighlightedTab();
+      return;
+    }
+
+    if (
+      mode === MODES.TAB_SEARCH &&
+      (event.metaKey || event.ctrlKey) &&
+      event.key.toLowerCase() === "p"
+    ) {
+      event.preventDefault();
+      await toggleHighlightedPin();
+    }
+  }
+
+  async function submitSelection(index = highlightedIndex) {
+    if (submitting) {
+      return;
+    }
+
+    submitting = true;
+
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/submit",
+      payload: {
+        mode,
+        contextTabId,
+        rawQuery: input.value,
+        selectedResult: results[index] || null
+      }
+    });
+
+    submitting = false;
+
+    if (!response?.ok) {
+      statusMessage = response?.error || "Unable to open the selected result.";
+      renderChrome();
+      return;
+    }
+
+    if (response.closeSurface !== false) {
+      dismiss();
+    }
+  }
+
+  async function closeHighlightedTab(index = highlightedIndex) {
+    const target = results[index];
+
+    if (!target?.tabId) {
+      return;
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/close-tab",
+      payload: {
+        tabId: target.tabId
+      }
+    });
+
+    if (!response?.ok) {
+      statusMessage = response?.error || "Unable to close the tab.";
+      renderChrome();
+      return;
+    }
+
+    results = results.filter((result) => result.tabId !== target.tabId);
+    highlightedIndex = Math.max(Math.min(index - 1, results.length - 1), 0);
+    renderResults();
+    queueSearch(true);
+  }
+
+  async function toggleHighlightedPin(index = highlightedIndex) {
+    const target = results[index];
+
+    if (!target?.tabId || mode !== MODES.TAB_SEARCH) {
+      return;
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/toggle-pin-tab",
+      payload: {
+        tabId: target.tabId
+      }
+    });
+
+    if (!response?.ok) {
+      statusMessage = response?.error || "Unable to update the tab pin state.";
+      renderChrome();
+      return;
+    }
+
+    results = results.map((result) => {
+      if (result.tabId !== target.tabId) {
+        return result;
+      }
+
+      return {
+        ...result,
+        pinned: Boolean(response.result?.pinned)
+      };
+    });
+
+    statusMessage = response.result?.pinned ? "Pinned tab." : "Unpinned tab.";
+    renderResults();
+  }
+
+  function handleResultsClick(event) {
+    const closeButton = event.target.closest("[data-close-tab]");
+
+    if (closeButton) {
+      void closeHighlightedTab(Number(closeButton.dataset.closeTab));
+      return;
+    }
+
+    const trigger = event.target.closest("[data-result-index]");
+
+    if (!trigger) {
+      return;
+    }
+
+    const index = Number(trigger.dataset.resultIndex);
+    highlightedIndex = index;
+    renderResults();
+    void submitSelection(index);
+  }
+
+  function handleResultsHover(event) {
+    const trigger = event.target.closest("[data-result-index]");
+
+    if (!trigger) {
+      return;
+    }
+
+    const nextIndex = Number(trigger.dataset.resultIndex);
+
+    if (nextIndex !== highlightedIndex) {
+      highlightedIndex = nextIndex;
+      renderResults();
+    }
+  }
+
+  function dismiss() {
+    clearTimeout(searchTimer);
+    searchVersion += 1;
+    closeSurface();
+  }
+
+  function restoreInputFocus(selectAll = false) {
+    const applyFocus = () => {
+      input.focus({ preventScroll: true });
+
+      if (selectAll) {
+        input.setSelectionRange(0, input.value.length);
+        return;
+      }
+
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+
+    requestAnimationFrame(() => {
+      applyFocus();
+      window.setTimeout(applyFocus, 32);
+    });
+  }
+}
+
+function appendIcon(container, result) {
+  const fallbackHtml = ICONS[iconNameForResult(result)] || ICONS.globe;
+
+  if (!result.iconUrl) {
+    container.innerHTML = fallbackHtml;
+    return;
+  }
+
+  const cached = iconUrlCache.get(result.iconUrl);
+
+  if (cached === "error") {
+    container.innerHTML = fallbackHtml;
+    return;
+  }
+
+  const fallback = document.createElement("span");
+  fallback.className = "zenbar-result__icon-fallback";
+  fallback.innerHTML = fallbackHtml;
+
+  const image = document.createElement("img");
+  image.className = "zenbar-result__favicon";
+  image.alt = "";
+  image.referrerPolicy = "no-referrer";
+
+  if (cached === "loaded") {
+    image.src = result.iconUrl;
+    container.append(image);
+    return;
+  }
+
+  image.style.display = "none";
+  container.append(fallback, image);
+
+  image.addEventListener("load", () => {
+    iconUrlCache.set(result.iconUrl, "loaded");
+    fallback.remove();
+    image.style.display = "";
+  }, { once: true });
+
+  image.addEventListener("error", () => {
+    iconUrlCache.set(result.iconUrl, "error");
+    image.remove();
+    fallback.style.display = "";
+  }, { once: true });
+
+  image.src = result.iconUrl;
+}
+
+function iconNameForResult(result) {
+  switch (result.type) {
+    case "search-action":
+      return "search";
+    case "tab":
+      return "tab";
+    case "bookmark":
+      return "bookmark";
+    case "history":
+      return "history";
+    case "suggestion":
+      return "spark";
+    default:
+      return "globe";
+  }
+}
+
+function subtitleForResult(result) {
+  if (result.url) {
+    return result.url;
+  }
+
+  if (result.type === "suggestion") {
+    return "Use this query with your default search engine";
+  }
+
+  if (result.type === "search-action") {
+    return "Use your default search engine";
+  }
+
+  return "";
+}
+
+function badgesForResult(result) {
+  const badges = [];
+
+  if (!result.closeable && (result.type === "tab" || result.openTabId)) {
+    badges.push("tab");
+  }
+
+  if (result.pinned) {
+    badges.push("pin");
+  }
+
+  if (result.type === "bookmark") {
+    badges.push("bookmark");
+  }
+
+  if (result.type === "history") {
+    badges.push("history");
+  }
+
+  return badges;
+}
+
+function buildBadge(kind) {
+  const badge = document.createElement("span");
+  badge.className = "zenbar-badge";
+  badge.title = badgeLabel(kind);
+  badge.innerHTML = ICONS[kind] || ICONS.globe;
+  return badge;
+}
+
+function badgeLabel(kind) {
+  switch (kind) {
+    case "tab":
+      return "Open tab";
+    case "bookmark":
+      return "Bookmark";
+    case "pin":
+      return "Pinned tab";
+    case "history":
+      return "History";
+    default:
+      return "Result";
+  }
+}
