@@ -205,6 +205,11 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     });
 
     resultsHost.append(fragment);
+
+    const activeRow = resultsHost.querySelector(".zenbar-result-row--active");
+    if (activeRow) {
+      activeRow.scrollIntoView({ block: "nearest" });
+    }
   }
 
   function getEmptyStateMarkup() {

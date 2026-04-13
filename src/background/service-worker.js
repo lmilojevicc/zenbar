@@ -262,8 +262,7 @@ async function buildTabSearchResults(rawQuery, currentTab, settings) {
       };
     })
     .filter(Boolean)
-    .sort(compareResults)
-    .slice(0, MAX_RESULTS);
+    .sort(compareResults);
 }
 
 function buildOpenTabResults(allTabs, query, currentTab, settings) {
