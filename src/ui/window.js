@@ -8,7 +8,7 @@ const contextTabId = Number(params.get("tabId")) || null;
 
 const app = mountCommandSurface({
   root: document.getElementById("app"),
-  surface: "window",
+  surface: "overlay",
   closeSurface: async () => {
     const currentTab = await chrome.tabs.getCurrent().catch(() => null);
 

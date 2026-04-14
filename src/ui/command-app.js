@@ -33,7 +33,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
           <span class="zenbar__input-icon" aria-hidden="true"></span>
           <input class="zenbar__input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
         </label>
-        <p class="zenbar__helper"></p>
+        <p class="zenbar__helper" aria-live="polite"></p>
         <div class="zenbar__results" role="listbox"></div>
       </div>
     </section>
@@ -109,10 +109,12 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   function renderChrome() {
     const meta = MODE_META[mode] || MODE_META[MODES.CURRENT_TAB];
     const isBusy = loading ? " zenbar__input-shell--busy" : "";
+    const helperText = statusMessage || "";
 
     container.dataset.mode = mode;
     modeLabel.textContent = meta.label;
-    helper.textContent = statusMessage || meta.helper;
+    helper.textContent = helperText;
+    helper.hidden = !helperText;
     input.placeholder = meta.placeholder;
 
     inputShell.className = `zenbar__input-shell${isBusy}`;
@@ -263,7 +265,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     }
 
     statusMessage = "";
-    results = Array.isArray(response.results) ? response.results : [];
+    results = prioritizeTypedQueryResult(Array.isArray(response.results) ? response.results : [], input.value, mode);
     renderResults();
   }
 
@@ -486,6 +488,32 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       window.setTimeout(applyFocus, 32);
     });
   }
+}
+
+export function prioritizeTypedQueryResult(results, rawQuery, mode) {
+  if (mode === MODES.TAB_SEARCH) {
+    return results;
+  }
+
+  const query = String(rawQuery ?? "").trim().toLowerCase();
+
+  if (!query) {
+    return results;
+  }
+
+  const prioritizedIndex = results.findIndex(
+    (result) => result?.type === "search-action" && String(result.queryText ?? "").trim().toLowerCase() === query
+  );
+
+  if (prioritizedIndex <= 0) {
+    return results;
+  }
+
+  return [
+    results[prioritizedIndex],
+    ...results.slice(0, prioritizedIndex),
+    ...results.slice(prioritizedIndex + 1)
+  ];
 }
 
 function appendIcon(container, result) {

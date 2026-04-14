@@ -13,6 +13,10 @@ export async function createOverlayApp() {
   host.style.inset = "0";
   host.style.zIndex = "2147483647";
   host.style.isolation = "isolate";
+  host.style.mixBlendMode = "normal";
+  host.style.filter = "none";
+  host.style.opacity = "1";
+  host.style.colorScheme = "dark";
   host.style.display = "none";
 
   const shadowRoot = host.shadowRoot || host.attachShadow({ mode: "open" });
