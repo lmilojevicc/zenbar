@@ -48,6 +48,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   const inputIcon = root.querySelector(".zenbar__input-icon");
   const resultsHost = root.querySelector(".zenbar__results");
   const eventRoot = root.getRootNode();
+  const ownerDocument = root.ownerDocument;
 
   inputIcon.append(createIcon("search"));
 
@@ -59,6 +60,9 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   input.addEventListener("input", handleInput);
   input.addEventListener("keydown", handleKeydown);
   eventRoot.addEventListener("keydown", handleEscapeKeydown, true);
+  if (ownerDocument !== eventRoot) {
+    ownerDocument.addEventListener("keydown", handleEscapeKeydown, true);
+  }
   root.addEventListener("keydown", stopKeyboardEventPropagation);
   root.addEventListener("keypress", stopKeyboardEventPropagation);
   root.addEventListener("keyup", stopKeyboardEventPropagation);
