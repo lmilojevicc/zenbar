@@ -4,7 +4,7 @@ import path from "node:path";
 
 const rootDir = process.cwd();
 const distDir = path.join(rootDir, "dist");
-const staticEntries = ["manifest.json", "styles", "ui"];
+const staticEntries = ["icons", "manifest.json", "styles", "ui"];
 const bundleEntries = [
   "src/background/service-worker.js",
   "src/content/bootstrap.js",
