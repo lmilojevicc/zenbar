@@ -1,5 +1,5 @@
 import {
-  AppWindow,
+  AppWindowMac,
   Bookmark,
   Globe,
   History,
@@ -12,7 +12,7 @@ import {
 
 const ICONS = Object.freeze({
   search: Search,
-  tab: AppWindow,
+  tab: AppWindowMac,
   pin: Pin,
   bookmark: Bookmark,
   history: History,
