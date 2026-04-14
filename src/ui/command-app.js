@@ -59,6 +59,9 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   input.addEventListener("input", handleInput);
   input.addEventListener("keydown", handleKeydown);
   eventRoot.addEventListener("keydown", handleEscapeKeydown, true);
+  root.addEventListener("keydown", stopKeyboardEventPropagation);
+  root.addEventListener("keypress", stopKeyboardEventPropagation);
+  root.addEventListener("keyup", stopKeyboardEventPropagation);
   resultsHost.addEventListener("click", handleResultsClick);
   resultsHost.addEventListener("mouseover", handleResultsHover);
 
@@ -431,6 +434,14 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       highlightedIndex = nextIndex;
       renderResults();
     }
+  }
+
+  function stopKeyboardEventPropagation(event) {
+    if (!isOpen) {
+      return;
+    }
+
+    event.stopPropagation();
   }
 
   function handleEscapeKeydown(event) {
