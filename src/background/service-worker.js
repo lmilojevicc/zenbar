@@ -188,12 +188,12 @@ async function buildGlobalResults(rawQuery, currentTab, settings, clientId) {
   }
 
   const permissions = await getPermissionState();
-  const allTabs = await chrome.tabs.query({});
-  const openTabByUrl = createOpenTabMap(allTabs, currentTab?.id);
+  const windowTabs = await queryTabsForWindow(currentTab);
+  const openTabByUrl = createOpenTabMap(windowTabs, currentTab?.id);
 
   const [tabResults, bookmarkResults, historyResults, suggestionResults] = await Promise.all([
     settings.sources.tabs
-      ? buildOpenTabResults(allTabs, query, currentTab, settings)
+      ? buildOpenTabResults(windowTabs, query, currentTab, settings)
       : Promise.resolve([]),
     settings.sources.bookmarks && permissions.bookmarks
       ? buildBookmarkResults(query, settings, openTabByUrl)
@@ -231,7 +231,7 @@ async function buildGlobalResults(rawQuery, currentTab, settings, clientId) {
 
 async function buildTabSearchResults(rawQuery, currentTab, settings) {
   const query = rawQuery.trim();
-  const tabs = await chrome.tabs.query({});
+  const tabs = await queryTabsForWindow(currentTab);
 
   return tabs
     .filter((tab) => tab.id && tab.id !== currentTab?.id && tab.url)
@@ -477,6 +477,7 @@ async function submitSelection(payload, sender) {
   const selection = payload?.selectedResult || inferImplicitSelection(rawQuery);
   const reuseSubmitterTab = shouldReuseSubmitterTab(mode, sender);
   const submitterTabId = sender?.tab?.id ?? null;
+  const contextTab = await resolveContextTab(payload?.contextTabId, sender);
 
   if (!selection) {
     return { ok: true, closeSurface: false };
@@ -494,6 +495,7 @@ async function submitSelection(payload, sender) {
   const execution = await executeSelection(selection, {
     mode,
     contextTabId: payload?.contextTabId ?? null,
+    contextWindowId: contextTab?.windowId ?? null,
     rawQuery,
     submitterTabId,
     reuseSubmitterTab
@@ -540,6 +542,7 @@ async function executeSelection(selection, context) {
         context.contextTabId,
         selection.openTabId,
         selection.openWindowId,
+        context.contextWindowId,
         context.submitterTabId,
         context.reuseSubmitterTab
       );
@@ -562,6 +565,7 @@ async function executeSelection(selection, context) {
           context.contextTabId,
           selection.openTabId,
           selection.openWindowId,
+          context.contextWindowId,
           context.submitterTabId,
           context.reuseSubmitterTab
         );
@@ -581,7 +585,7 @@ async function executeSelection(selection, context) {
   }
 }
 
-async function openUrl(url, mode, contextTabId, knownTabId, knownWindowId, submitterTabId, reuseSubmitterTab) {
+async function openUrl(url, mode, contextTabId, knownTabId, knownWindowId, currentWindowId, submitterTabId, reuseSubmitterTab) {
   if (!url) {
     return { reusedSubmitterTab: false };
   }
@@ -597,7 +601,7 @@ async function openUrl(url, mode, contextTabId, knownTabId, knownWindowId, submi
       return { reusedSubmitterTab: true };
     }
 
-    const matchingTab = await findMatchingTab(url, contextTabId);
+    const matchingTab = await findMatchingTab(url, contextTabId, currentWindowId);
 
     if (matchingTab?.id) {
       await activateTab(matchingTab.id, matchingTab.windowId ?? null);
@@ -691,8 +695,8 @@ async function togglePinnedTab(tabId) {
   };
 }
 
-async function findMatchingTab(url, excludedTabId) {
-  const tabs = await chrome.tabs.query({});
+async function findMatchingTab(url, excludedTabId, windowId) {
+  const tabs = await queryTabsForWindowId(windowId);
   const comparableUrl = normalizeComparableUrl(url);
 
   return tabs.find((tab) => {
@@ -727,6 +731,18 @@ async function getActiveTab() {
   });
 
   return tab ?? null;
+}
+
+async function queryTabsForWindow(currentTab) {
+  return await queryTabsForWindowId(currentTab?.windowId ?? null);
+}
+
+async function queryTabsForWindowId(windowId) {
+  if (windowId) {
+    return await chrome.tabs.query({ windowId });
+  }
+
+  return await chrome.tabs.query({ currentWindow: true });
 }
 
 function shouldReuseSubmitterTab(mode, sender) {

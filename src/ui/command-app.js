@@ -216,8 +216,8 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   function getEmptyStateMarkup() {
     if (mode === MODES.TAB_SEARCH) {
       return input.value.trim()
-        ? "<strong>No matching tabs</strong><span>Try a shorter title, URL fragment, or switch windows.</span>"
-        : "<strong>Ready to jump</strong><span>Your other open tabs will appear here as soon as you type.</span>";
+        ? "<strong>No matching tabs</strong><span>Try a shorter title or URL fragment from this window.</span>"
+        : "<strong>Ready to jump</strong><span>Your other tabs in this window will appear here as soon as you type.</span>";
     }
 
     return input.value.trim()
