@@ -316,7 +316,7 @@ async function buildBookmarkResults(query, settings, openTabByUrl) {
         url: bookmark.url,
         openTabId: openTab?.id ?? null,
         openWindowId: openTab?.windowId ?? null,
-        iconUrl: getFaviconUrl(bookmark.url),
+        iconUrl: getFaviconUrl(bookmark.url, openTab?.favIconUrl || ""),
         finalScore: baseScore * settings.weights.bookmarks
       };
     })

@@ -63,7 +63,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   root.addEventListener("keypress", stopKeyboardEventPropagation);
   root.addEventListener("keyup", stopKeyboardEventPropagation);
   resultsHost.addEventListener("click", handleResultsClick);
-  resultsHost.addEventListener("mouseover", handleResultsHover);
+  resultsHost.addEventListener("pointermove", handleResultsHover);
 
   renderChrome();
   renderResults();
@@ -539,7 +539,7 @@ function iconNameForResult(result) {
     case "tab":
       return "tab";
     case "bookmark":
-      return "bookmark";
+      return "globe";
     case "history":
       return "history";
     case "suggestion":
