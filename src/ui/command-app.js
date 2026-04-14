@@ -25,6 +25,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   let searchTimer = 0;
   let searchVersion = 0;
   let statusMessage = "";
+  let isOpen = false;
 
   root.innerHTML = `
     <section class="zenbar zenbar--${surface}">
@@ -54,6 +55,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   const input = root.querySelector(".zenbar__input");
   const inputShell = root.querySelector(".zenbar__input-shell");
   const resultsHost = root.querySelector(".zenbar__results");
+  const eventRoot = root.getRootNode();
 
   backdrop.hidden = surface !== "overlay";
 
@@ -62,6 +64,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   });
   input.addEventListener("input", handleInput);
   input.addEventListener("keydown", handleKeydown);
+  eventRoot.addEventListener("keydown", handleEscapeKeydown, true);
   resultsHost.addEventListener("click", handleResultsClick);
   resultsHost.addEventListener("mouseover", handleResultsHover);
 
@@ -73,6 +76,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   };
 
   async function open(payload = {}) {
+    isOpen = true;
     mode = payload.mode || MODES.CURRENT_TAB;
     contextTabId = Number(payload.contextTabId) || null;
     statusMessage = "";
@@ -289,12 +293,6 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       return;
     }
 
-    if (event.key === "Escape") {
-      event.preventDefault();
-      dismiss();
-      return;
-    }
-
     if (
       mode === MODES.TAB_SEARCH &&
       (event.metaKey || event.ctrlKey) &&
@@ -441,7 +439,22 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     }
   }
 
+  function handleEscapeKeydown(event) {
+    if (!isOpen || event.key !== "Escape") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    dismiss();
+  }
+
   function dismiss() {
+    if (!isOpen) {
+      return;
+    }
+
+    isOpen = false;
     clearTimeout(searchTimer);
     searchVersion += 1;
     closeSurface();
