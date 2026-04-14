@@ -1,17 +1,38 @@
+import { build } from "esbuild";
 import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 const rootDir = process.cwd();
 const distDir = path.join(rootDir, "dist");
-const buildEntries = ["manifest.json", "src", "styles", "ui"];
+const staticEntries = ["manifest.json", "styles", "ui"];
+const bundleEntries = [
+  "src/background/service-worker.js",
+  "src/content/bootstrap.js",
+  "src/ui/options.js",
+  "src/ui/overlay-entry.js",
+  "src/ui/window.js"
+];
 
 await validateManifest();
 await rm(distDir, { recursive: true, force: true });
 await mkdir(distDir, { recursive: true });
 
-for (const entry of buildEntries) {
+for (const entry of staticEntries) {
   await copyEntry(entry);
 }
+
+await build({
+  entryPoints: bundleEntries.map((entry) => path.join(rootDir, entry)),
+  outdir: distDir,
+  outbase: rootDir,
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: ["chrome114"],
+  treeShaking: true,
+  legalComments: "none",
+  logLevel: "silent"
+});
 
 console.log(`Built Zenbar into ${path.relative(rootDir, distDir) || "dist"}`);
 

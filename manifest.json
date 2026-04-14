@@ -56,8 +56,7 @@
     {
       "resources": [
         "styles/*.css",
-        "src/ui/*.js",
-        "src/shared/*.js"
+        "src/ui/*.js"
       ],
       "matches": [
         "<all_urls>"

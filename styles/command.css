@@ -354,6 +354,9 @@ body {
 }
 
 .zenbar-result__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -364,6 +367,11 @@ body {
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
+}
+
+.zenbar-result__close svg {
+  width: 14px;
+  height: 14px;
 }
 
 svg {

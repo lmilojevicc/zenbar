@@ -1,14 +1,5 @@
 import { MODE_META, MODES } from "../shared/constants.js";
-
-const ICONS = {
-  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m15.2 15.2 4.05 4.05" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/></svg>',
-  tab: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 6.75h14.5a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5H4.75a1.5 1.5 0 0 1-1.5-1.5v-7.5a1.5 1.5 0 0 1 1.5-1.5Zm0 0 3 3h13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
-  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.75h6M10 4.75v4.1l-2.75 2.75v1.4h9.5v-1.4L14 8.85v-4.1M12 13v6.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
-  bookmark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.25 5.25h9.5a1 1 0 0 1 1 1v12l-5.75-3.25-5.75 3.25v-12a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/></svg>',
-  history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 12a7.25 7.25 0 1 0 2.12-5.13M4.75 4.75v3.62h3.62M12 8.5v4.25l2.75 1.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
-  globe: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.25a7.75 7.75 0 1 0 0 15.5a7.75 7.75 0 0 0 0-15.5Zm-6.5 7.75h13M12 4.5c1.8 1.9 2.75 4.4 2.75 7.5S13.8 17.6 12 19.5M12 4.5C10.2 6.4 9.25 8.9 9.25 12s.95 5.6 2.75 7.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>',
-  spark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4.5 1.25 3.75L17 9.5l-3.75 1.25L12 14.5l-1.25-3.75L7 9.5l3.75-1.25L12 4.5Zm5 9.75.6 1.65 1.65.6-1.65.6-.6 1.65-.6-1.65-1.65-.6 1.65-.6.6-1.65ZM6.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>'
-};
+import { createIcon } from "./icons.js";
 
 const iconUrlCache = new Map();
 
@@ -39,7 +30,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
           <button class="zenbar__dismiss" data-action="dismiss" type="button">Esc</button>
         </div>
         <label class="zenbar__input-shell">
-          <span class="zenbar__input-icon" aria-hidden="true">${ICONS.search}</span>
+          <span class="zenbar__input-icon" aria-hidden="true"></span>
           <input class="zenbar__input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
         </label>
         <p class="zenbar__helper"></p>
@@ -54,8 +45,11 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   const helper = root.querySelector(".zenbar__helper");
   const input = root.querySelector(".zenbar__input");
   const inputShell = root.querySelector(".zenbar__input-shell");
+  const inputIcon = root.querySelector(".zenbar__input-icon");
   const resultsHost = root.querySelector(".zenbar__results");
   const eventRoot = root.getRootNode();
+
+  inputIcon.append(createIcon("search"));
 
   backdrop.hidden = surface !== "overlay";
 
@@ -200,7 +194,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
         closeButton.className = "zenbar-result__close";
         closeButton.dataset.closeTab = String(index);
         closeButton.dataset.resultIndex = String(index);
-        closeButton.textContent = "x";
+        closeButton.append(createIcon("x"));
         closeButton.setAttribute("aria-label", `Close ${result.title || "tab"}`);
         meta.append(closeButton);
       }
@@ -480,23 +474,23 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 }
 
 function appendIcon(container, result) {
-  const fallbackHtml = ICONS[iconNameForResult(result)] || ICONS.globe;
+  const fallbackName = iconNameForResult(result);
 
   if (!result.iconUrl) {
-    container.innerHTML = fallbackHtml;
+    container.append(createIcon(fallbackName));
     return;
   }
 
   const cached = iconUrlCache.get(result.iconUrl);
 
   if (cached === "error") {
-    container.innerHTML = fallbackHtml;
+    container.append(createIcon(fallbackName));
     return;
   }
 
   const fallback = document.createElement("span");
   fallback.className = "zenbar-result__icon-fallback";
-  fallback.innerHTML = fallbackHtml;
+  fallback.append(createIcon(fallbackName));
 
   const image = document.createElement("img");
   image.className = "zenbar-result__favicon";
@@ -586,7 +580,7 @@ function buildBadge(kind) {
   const badge = document.createElement("span");
   badge.className = "zenbar-badge";
   badge.title = badgeLabel(kind);
-  badge.innerHTML = ICONS[kind] || ICONS.globe;
+  badge.append(createIcon(kind));
   return badge;
 }
 
