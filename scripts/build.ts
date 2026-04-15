@@ -8,6 +8,7 @@ const staticEntries = ["icons", "manifest.json", "styles", "ui"] as const;
 const bundleEntries = [
   "src/background/service-worker.ts",
   "src/content/bootstrap.ts",
+  "src/ui/onboarding.ts",
   "src/ui/options.ts",
   "src/ui/overlay-entry.ts",
   "src/ui/window.ts"

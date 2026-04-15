@@ -85,7 +85,10 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   await ensureSettings();
 
   if (reason === "install") {
-    await chrome.runtime.openOptionsPage().catch(() => {});
+    await chrome.tabs.create({
+      url: chrome.runtime.getURL("ui/onboarding.html"),
+      active: true
+    }).catch(() => {});
   }
 });
 

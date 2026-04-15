@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to Zenbar</title>
+    <link rel="stylesheet" href="../styles/options.css" />
+    <style>
+      .onboarding-hero {
+        text-align: left;
+        margin-bottom: 48px;
+        padding: 0 4px;
+      }
+      .onboarding-hero h1 {
+        font-size: 48px;
+        margin-bottom: 12px;
+      }
+      .onboarding-hero p {
+        font-size: 18px;
+        color: rgba(196, 199, 209, 0.84);
+      }
+      .alert-card {
+        border: 1px solid rgba(255, 178, 178, 0.2);
+        background: rgba(44, 18, 18, 0.4);
+      }
+      .alert-card h2 {
+        color: rgba(255, 178, 178, 0.96);
+      }
+      .card p {
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .card .note {
+        font-size: 14px;
+      }
+      .onboarding-actions {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="options-shell">
+      <section class="onboarding-hero">
+        <h1>Welcome to Zenbar</h1>
+        <p>A minimalist, keyboard-driven command bar for your browser.</p>
+      </section>
+
+      <section class="options-grid">
+        <section class="card alert-card card--full">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Action Required</p>
+              <h2>Browser Shortcut Conflict</h2>
+            </div>
+            <button id="change-shortcuts" class="primary-button" type="button">Fix Shortcuts</button>
+          </div>
+          <p>
+            By default, Zenbar tries to use <strong>Ctrl+L</strong>, <strong>Ctrl+T</strong>, and <strong>Ctrl+Shift+A</strong>. However, Chromium browsers (Chrome, Brave, Edge) reserve these for native features like the address bar and tab search.
+          </p>
+          <p class="note">
+            To use Zenbar, you <strong>must</strong> manually assign these shortcuts in the browser's settings.
+          </p>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Step 1</p>
+              <h2>Enable History & Bookmarks</h2>
+            </div>
+          </div>
+          <p>Zenbar works best when it can search your existing browsing data.</p>
+          <div class="control-actions" style="margin-top: 16px;">
+            <button class="ghost-button" type="button" data-request-permission="history">Grant History Access</button>
+            <button class="ghost-button" type="button" data-request-permission="bookmarks">Grant Bookmarks Access</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Step 2</p>
+              <h2>Remote Suggestions</h2>
+            </div>
+          </div>
+          <p>Optionally enable DuckDuckGo for live search suggestions as you type.</p>
+          <div class="control-actions" style="margin-top: 16px;">
+            <button id="grant-ddg" class="ghost-button" type="button">Enable Suggestions</button>
+          </div>
+        </section>
+
+        <section class="card card--full">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">Ready?</p>
+              <h2>You're all set!</h2>
+            </div>
+          </div>
+          <p>You can always adjust these and more advanced options in the full settings page.</p>
+          <div class="onboarding-actions">
+            <button id="finish" class="primary-button" type="button">Go to Settings</button>
+          </div>
+        </section>
+      </section>
+
+      <p id="status" class="status" aria-live="polite" style="text-align: center;"></p>
+    </main>
+
+    <script type="module" src="../src/ui/onboarding.js"></script>
+  </body>
+</html>

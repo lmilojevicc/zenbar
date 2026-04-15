@@ -367,7 +367,7 @@ function renderAppearance(): void {
 function renderShortcuts(): void {
   const unassignedCount = state.commands.filter((command) => !command.shortcut).length;
   const warning = unassignedCount
-    ? `<p class="note">${unassignedCount} command${unassignedCount === 1 ? " is" : "s are"} currently unassigned.</p>`
+    ? `<p class="note">${unassignedCount} command${unassignedCount === 1 ? " is" : "s are"} currently unassigned. Note that reserved shortcuts like Ctrl+L, Ctrl+T, or Ctrl+Shift+A must be manually assigned.</p>`
     : '<p class="note">All Zenbar commands currently have a shortcut.</p>';
 
   elements.shortcuts.innerHTML = `
