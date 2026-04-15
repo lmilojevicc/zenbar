@@ -1,6 +1,7 @@
 import { MODE_META, MODES } from "../shared/constants.js";
 import type {
   BasicResponse,
+  CommandPosition,
   Mode,
   OpenPayload,
   QueryResponse,
@@ -51,8 +52,11 @@ export function mountCommandSurface({
   const clientId = crypto.randomUUID();
 
   let mode: Mode = MODES.CURRENT_TAB;
+  let commandPosition: CommandPosition = "center";
   let contextTabId: number | null = null;
   let currentTab: SerializedTab | null = null;
+  let typedQuery = "";
+  let hasUserEditedInput = false;
   let results: ResultItem[] = [];
   let selectionModel: SelectionModelState = createSelectionModel(MODES.CURRENT_TAB);
   let loading = false;
@@ -125,7 +129,6 @@ export function mountCommandSurface({
     mode = payload.mode ?? MODES.CURRENT_TAB;
     contextTabId = typeof payload.contextTabId === "number" ? payload.contextTabId : null;
     selectionModel = createSelectionModel(mode);
-    statusMessage = "";
     searchVersion += 1;
 
     const response = await sendRuntimeMessage<UiContextResponse>({
@@ -141,9 +144,16 @@ export function mountCommandSurface({
     }
 
     currentTab = response.context.currentTab;
-    input.value = mode === MODES.CURRENT_TAB ? currentTab?.url ?? "" : "";
-    results = [];
-    loading = false;
+    commandPosition = response.context.settings.commandPosition;
+    ({
+      typedQuery,
+      hasUserEditedInput,
+      results,
+      loading,
+      submitting,
+      statusMessage
+    } = getCommandSurfaceOpenState(mode, currentTab));
+    input.value = typedQuery;
     renderChrome();
     renderResults();
     queueSearch(true);
@@ -162,6 +172,7 @@ export function mountCommandSurface({
     const helperText = visualState.helperText;
 
     container.dataset.mode = mode;
+    container.dataset.position = commandPosition;
     modeLabel.textContent = meta.label;
     helper.textContent = helperText;
     helper.hidden = !helperText;
@@ -169,6 +180,12 @@ export function mountCommandSurface({
 
     inputShell.className = `zenbar__input-shell${isBusy}`;
     renderInputIcon(inputIcon, visualState.inputIcon);
+    applyCommandInputState(input, getCommandInputState({
+      typedQuery,
+      selectionModel,
+      results,
+      allowDefaultPreview: mode !== MODES.CURRENT_TAB || hasUserEditedInput
+    }));
   }
 
   function renderResults(): void {
@@ -271,12 +288,12 @@ export function mountCommandSurface({
 
   function getEmptyStateMarkup(): string {
     if (mode === MODES.TAB_SEARCH) {
-      return input.value.trim()
+      return typedQuery.trim()
         ? "<strong>No matching tabs</strong><span>Try a shorter title or URL fragment from this window.</span>"
         : "<strong>Ready to jump</strong><span>Your other tabs in this window will appear here as soon as you type.</span>";
     }
 
-    return input.value.trim()
+    return typedQuery.trim()
       ? "<strong>No direct matches yet</strong><span>Press Enter to use your typed query with your default search engine.</span>"
       : "<strong>Start typing</strong><span>Search, navigate, or jump to a result from this calm command space.</span>";
   }
@@ -297,7 +314,7 @@ export function mountCommandSurface({
       type: "zenbar/query",
       payload: {
         mode,
-        query: input.value,
+        query: typedQuery,
         contextTabId,
         clientId
       }
@@ -328,6 +345,8 @@ export function mountCommandSurface({
   }
 
   function handleInput(): void {
+    typedQuery = input.value;
+    hasUserEditedInput = true;
     selectionModel = resetSelectionForTypedInput(selectionModel);
     statusMessage = "";
     queueSearch(false);
@@ -392,9 +411,9 @@ export function mountCommandSurface({
       payload: {
         mode,
         contextTabId,
-        rawQuery: input.value,
+        rawQuery: typedQuery,
         selectedResult: explicitSelection,
-        defaultResult: selectionModel.defaultResult
+        defaultResult: getVisibleDefaultResult(selectionModel, mode !== MODES.CURRENT_TAB || hasUserEditedInput)
       }
     });
 
@@ -405,10 +424,15 @@ export function mountCommandSurface({
       return;
     }
 
+    submitting = false;
+    statusMessage = "";
+
     if (response.closeSurface !== false) {
       dismiss();
       return;
     }
+
+    renderChrome();
   }
 
   async function closeHighlightedTab(index?: number): Promise<void> {
@@ -607,6 +631,56 @@ export function prioritizeTypedQueryResult<T extends PrioritizableResult>(result
   ];
 }
 
+export interface CommandInputState {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+  previewResult: ResultItem | null;
+}
+
+export interface CommandSurfaceOpenState {
+  typedQuery: string;
+  hasUserEditedInput: boolean;
+  results: ResultItem[];
+  loading: boolean;
+  submitting: boolean;
+  statusMessage: string;
+}
+
+export function getCommandSurfaceOpenState(mode: Mode, currentTab: SerializedTab | null): CommandSurfaceOpenState {
+  return {
+    typedQuery: mode === MODES.CURRENT_TAB ? currentTab?.url ?? "" : "",
+    hasUserEditedInput: mode !== MODES.CURRENT_TAB,
+    results: [],
+    loading: false,
+    submitting: false,
+    statusMessage: ""
+  };
+}
+
+export function getCommandInputState({
+  typedQuery,
+  selectionModel: _selectionModel,
+  results: _results,
+  allowDefaultPreview: _allowDefaultPreview
+}: {
+  typedQuery: string;
+  selectionModel: SelectionModelState;
+  results: ResultItem[];
+  allowDefaultPreview: boolean;
+}): CommandInputState {
+  return {
+    value: typedQuery,
+    selectionStart: typedQuery.length,
+    selectionEnd: typedQuery.length,
+    previewResult: null
+  };
+}
+
+export function getVisibleDefaultResult(selectionModel: SelectionModelState, allowDefaultPreview: boolean): ResultItem | null {
+  return allowDefaultPreview ? selectionModel.defaultResult : null;
+}
+
 export function getCommandSurfaceStatusState({
   mode,
   loading,
@@ -635,6 +709,22 @@ export function getCommandSurfaceStatusState({
     inputIcon: "search",
     isBusy: loading
   };
+}
+
+function applyCommandInputState(input: HTMLInputElement, inputState: CommandInputState): void {
+  if (input.value !== inputState.value) {
+    input.value = inputState.value;
+  }
+
+  if (!input.matches(":focus")) {
+    return;
+  }
+
+  if (input.selectionStart === inputState.selectionStart && input.selectionEnd === inputState.selectionEnd) {
+    return;
+  }
+
+  input.setSelectionRange(inputState.selectionStart, inputState.selectionEnd);
 }
 
 function getRequiredElement<T extends Element>(root: ParentNode, selector: string): T {

@@ -6,7 +6,7 @@ import {
   SHORTCUTS_URL
 } from "../shared/constants.js";
 import { getSettings, mergeSettings, patchSettings, saveSettings } from "../shared/settings.js";
-import type { PermissionState, ZenbarSettings } from "../shared/types.js";
+import type { CommandPosition, PermissionState, ZenbarSettings } from "../shared/types.js";
 
 type SourceKey = keyof ZenbarSettings["sources"];
 type PermissionKey = "bookmarks" | "history";
@@ -78,6 +78,7 @@ const elements = {
   sources: mustGetElement("sources", HTMLElement),
   suggestions: mustGetElement("suggestions", HTMLElement),
   adaptiveHistory: mustGetElement("adaptive-history", HTMLElement),
+  appearance: mustGetElement("appearance", HTMLElement),
   shortcuts: mustGetElement("shortcuts", HTMLElement),
   status: mustGetElement("status", HTMLElement),
   changeShortcuts: mustGetElement("change-shortcuts", HTMLButtonElement),
@@ -114,6 +115,7 @@ function render(): void {
   renderSources();
   renderSuggestions();
   renderAdaptiveHistory();
+  renderAppearance();
   renderShortcuts();
 }
 
@@ -321,6 +323,45 @@ function renderAdaptiveHistory(): void {
       setStatus("Cleared learned history.");
     });
   }
+}
+
+function renderAppearance(): void {
+  const position = state.settings.commandPosition;
+
+  elements.appearance.innerHTML = `
+    <div class="stack">
+      <label class="field">
+        <span>Position</span>
+        <select id="command-position">
+          <option value="center" ${position === "center" ? "selected" : ""}>Centered</option>
+          <option value="top" ${position === "top" ? "selected" : ""}>Top</option>
+        </select>
+      </label>
+      <p class="note">Choose where Zenbar appears on screen. Center keeps it near mid-screen, while Top pins it higher with the same layout.</p>
+    </div>
+  `;
+
+  const positionSelect = elements.appearance.querySelector<HTMLSelectElement>("#command-position");
+
+  if (!positionSelect) {
+    return;
+  }
+
+  positionSelect.addEventListener("change", async (event: Event) => {
+    const target = event.currentTarget;
+
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    const nextValue: CommandPosition = target.value === "top" ? "top" : "center";
+
+    state.settings = await patchSettings({
+      commandPosition: nextValue
+    });
+    renderAppearance();
+    setStatus(nextValue === "top" ? "Command surface position set to top." : "Command surface position set to center.");
+  });
 }
 
 function renderShortcuts(): void {

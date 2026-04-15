@@ -12,6 +12,7 @@ const settings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
+  commandPosition: "center",
   suggestionProvider: "off",
   adaptiveHistoryEnabled: false
 };
@@ -53,7 +54,7 @@ describe("muxQueryResults", () => {
       url: "https://example.com/",
       heuristic: true,
       group: "heuristic",
-      providerId: "autofill-heuristic"
+      providerId: "history-url-heuristic"
     });
 
     const competingHeuristic = makeResult({

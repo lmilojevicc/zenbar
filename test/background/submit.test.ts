@@ -102,6 +102,7 @@ describe("createSubmitHandlers", () => {
       },
       settings: {
         sources: { tabs: true, bookmarks: true, history: true },
+        commandPosition: "center",
         suggestionProvider: "off",
         adaptiveHistoryEnabled: true
       },
@@ -121,6 +122,7 @@ describe("createSubmitHandlers", () => {
       },
       settings: {
         sources: { tabs: true, bookmarks: true, history: true },
+        commandPosition: "center",
         suggestionProvider: "off",
         adaptiveHistoryEnabled: true
       },

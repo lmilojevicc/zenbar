@@ -50,6 +50,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     bookmarks: true,
     history: true
   }),
+  commandPosition: "center",
   suggestionProvider: "off",
   adaptiveHistoryEnabled: false
 } satisfies ZenbarSettings);

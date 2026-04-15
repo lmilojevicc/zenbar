@@ -12,6 +12,7 @@ const enabledSettings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
+  commandPosition: "center",
   suggestionProvider: "off",
   adaptiveHistoryEnabled: true
 };

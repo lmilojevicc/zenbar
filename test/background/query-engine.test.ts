@@ -11,6 +11,7 @@ const settings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
+  commandPosition: "center",
   suggestionProvider: "off",
   adaptiveHistoryEnabled: false
 };
@@ -85,30 +86,30 @@ describe("runQueryEngine", () => {
 
   it("keeps only the winning heuristic in the visible result list", async () => {
     const firstHeuristic: QueryProvider = {
-      id: "autofill-heuristic",
-      kind: "heuristic",
-      group: "heuristic",
-      priority: 30,
-      isActive: () => true,
-      start: async () => [{
-        id: "autofill-result",
-        type: "url",
-        source: "url",
-        url: "https://example.com/"
-      }]
-    };
-
-    const secondHeuristic: QueryProvider = {
       id: "history-url-heuristic",
       kind: "heuristic",
       group: "heuristic",
-      priority: 20,
+      priority: 30,
       isActive: () => true,
       start: async () => [{
         id: "history-result",
         type: "history",
         source: "history",
         url: "https://example.com/"
+      }]
+    };
+
+    const secondHeuristic: QueryProvider = {
+      id: "fallback-heuristic",
+      kind: "heuristic",
+      group: "heuristic",
+      priority: 20,
+      isActive: () => true,
+      start: async () => [{
+        id: "fallback-result",
+        type: "url",
+        source: "url",
+        url: "https://example.com/foo"
       }]
     };
 
@@ -123,12 +124,43 @@ describe("runQueryEngine", () => {
 
     const response = await runQueryEngine(context, [secondHeuristic, firstHeuristic]);
 
-    expect(response.defaultResult?.id).toBe("autofill-result");
-    expect(response.results.map((result) => result.id)).toEqual(["autofill-result"]);
+    expect(response.defaultResult?.id).toBe("history-result");
+    expect(response.results.map((result) => result.id)).toEqual(["history-result"]);
     expect(response.context.heuristicCandidates.map((result) => result.id)).toEqual([
-      "autofill-result",
-      "history-result"
+      "history-result",
+      "fallback-result"
     ]);
+  });
+
+  it("does not decorate visible results with completion metadata", async () => {
+    const heuristicProvider: QueryProvider = {
+      id: "history-url-heuristic",
+      kind: "heuristic",
+      group: "heuristic",
+      priority: 30,
+      isActive: () => true,
+      start: async () => [{
+        id: "bookmark:york",
+        type: "url",
+        source: "url",
+        title: "York Emporium",
+        url: "https://yorkemporium.co.uk/"
+      }]
+    };
+
+    const context = createQueryContext({
+      requestId: "engine-4",
+      mode: MODES.NEW_TAB,
+      rawInput: "yor",
+      currentTab: null,
+      settings,
+      permissions
+    });
+
+    const response = await runQueryEngine(context, [heuristicProvider]);
+
+    expect((response.defaultResult as { autofill?: unknown } | null)?.autofill).toBeUndefined();
+    expect((response.results[0] as { autofill?: unknown } | undefined)?.autofill).toBeUndefined();
   });
 
   it("isolates provider failures and still returns healthy provider results", async () => {

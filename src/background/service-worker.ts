@@ -24,7 +24,6 @@ import {
   shouldReuseSubmitterTab as shouldReuseSubmitterTabForWindow,
   type ExecutionResult
 } from "./submit.js";
-import { createAutofillHeuristicProvider } from "./providers/heuristic/autofill.js";
 import { createFallbackHeuristicProvider } from "./providers/heuristic/fallback.js";
 import { createHistoryUrlHeuristicProvider } from "./providers/heuristic/history-url.js";
 import { createBookmarksResultsProvider } from "./providers/results/bookmarks.js";
@@ -36,8 +35,7 @@ import {
   fuzzyScore,
   getFaviconUrl,
   looksLikeUrl,
-  normalizeComparableUrl,
-  stripPrefixAndTrim
+  normalizeComparableUrl
 } from "../shared/utils.js";
 
 import type {
@@ -276,9 +274,6 @@ async function getResults(
 
 function createUrlbarProviders(context: ReturnType<typeof createQueryContext>) {
   return [
-    createAutofillHeuristicProvider({
-      resolveResult: resolveAutofillHeuristicResult
-    }),
     createHistoryUrlHeuristicProvider({
       resolveResult: resolveHistoryUrlHeuristicResult
     }),
@@ -297,88 +292,6 @@ function createUrlbarProviders(context: ReturnType<typeof createQueryContext>) {
       fetchSuggestions: (query) => fetchDuckDuckGoSuggestions(query, context.clientId)
     })
   ];
-}
-
-async function resolveAutofillHeuristicResult(context: ReturnType<typeof createQueryContext>): Promise<ResultItem | null> {
-  if (context.classification === "search" || context.classification === "empty") {
-    return null;
-  }
-
-  const [adaptiveMatches, windowTabs, bookmarks, historyItems] = await Promise.all([
-    context.allowedSources.includes("inputHistory")
-      ? adaptiveHistoryStore.getAdaptiveMatches(context.trimmedInput, context.settings)
-      : Promise.resolve([]),
-    context.allowedSources.includes("tabs")
-      ? queryTabsForWindow(context.currentTab)
-      : Promise.resolve([]),
-    context.allowedSources.includes("bookmarks") && context.permissions.bookmarks
-      ? chrome.bookmarks.search(context.trimmedInput)
-      : Promise.resolve([]),
-    context.allowedSources.includes("history") && context.permissions.history
-      ? chrome.history.search({
-          text: context.trimmedInput,
-          maxResults: 16,
-          startTime: 0
-        })
-      : Promise.resolve([])
-  ]);
-
-  const candidates = [
-    ...adaptiveMatches.map((entry) => entry.result),
-    ...windowTabs
-      .filter((tab) => Boolean(tab.url))
-      .map((tab) => ({
-        id: `autofill-tab:${tab.id}`,
-        type: "url" as const,
-        source: "url" as const,
-        title: tab.title || tab.url || "Untitled tab",
-        subtitle: tab.url || "",
-        url: tab.url || "",
-        openTabId: tab.id ?? null,
-        openWindowId: tab.windowId ?? null,
-        iconUrl: getFaviconUrl(tab.url, tab.favIconUrl),
-        dedupeKey: normalizeComparableUrl(tab.url)
-      })),
-    ...bookmarks
-      .filter((bookmark) => Boolean(bookmark.url))
-      .map((bookmark) => ({
-        id: `autofill-bookmark:${bookmark.id}`,
-        type: "url" as const,
-        source: "url" as const,
-        title: bookmark.title || bookmark.url || "Bookmark",
-        subtitle: bookmark.url || "",
-        url: bookmark.url || "",
-        dedupeKey: normalizeComparableUrl(bookmark.url)
-      })),
-    ...historyItems
-      .filter((item) => Boolean(item.url))
-      .map((item) => ({
-        id: `autofill-history:${item.id}`,
-        type: "url" as const,
-        source: "url" as const,
-        title: item.title || item.url || "History",
-        subtitle: item.url || "",
-        url: item.url || "",
-        dedupeKey: normalizeComparableUrl(item.url)
-      }))
-  ];
-
-  const bestCandidate = candidates
-    .map((candidate) => ({
-      candidate,
-      score: scoreAutofillCandidate(context, candidate.url, candidate.title)
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score)[0];
-
-  if (!bestCandidate) {
-    return null;
-  }
-
-  return {
-    ...bestCandidate.candidate,
-    finalScore: bestCandidate.score
-  };
 }
 
 async function resolveHistoryUrlHeuristicResult(context: ReturnType<typeof createQueryContext>): Promise<ResultItem | null> {
@@ -435,37 +348,6 @@ async function fetchDuckDuckGoSuggestions(query: string, clientId?: string): Pro
   }
 }
 
-function scoreAutofillCandidate(
-  context: ReturnType<typeof createQueryContext>,
-  candidateUrl: string | undefined,
-  candidateTitle?: string
-): number {
-  if (!candidateUrl) {
-    return 0;
-  }
-
-  const comparableCandidateUrl = normalizeComparableUrl(candidateUrl);
-  const comparableInputUrl = context.normalizedUrlCandidate ? normalizeComparableUrl(context.normalizedUrlCandidate) : "";
-  const strippedCandidate = stripPrefixAndTrim(candidateUrl);
-  const strippedInput = context.strippedInput;
-  let score = 0;
-
-  if (comparableInputUrl && comparableCandidateUrl === comparableInputUrl) {
-    score += 400;
-  }
-
-  if (comparableInputUrl && comparableCandidateUrl.startsWith(comparableInputUrl)) {
-    score += 240;
-  }
-
-  if (strippedInput && strippedCandidate.startsWith(strippedInput)) {
-    score += 180;
-  }
-
-  score += fuzzyScore(context.trimmedInput, candidateTitle, candidateUrl);
-
-  return score;
-}
 
 async function buildTabSearchResults(
   rawQuery: string,

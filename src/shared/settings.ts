@@ -14,6 +14,7 @@ export function mergeSettings(rawSettings: RawZenbarSettings = {}): ZenbarSettin
       ...defaults.sources,
       ...rawSettings.sources
     },
+    commandPosition: rawSettings.commandPosition === "top" ? "top" : "center",
     suggestionProvider: rawSettings.suggestionProvider === "duckduckgo" ? "duckduckgo" : "off",
     adaptiveHistoryEnabled: rawSettings.adaptiveHistoryEnabled === true
   };

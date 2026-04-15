@@ -10,6 +10,7 @@ const settings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
+  commandPosition: "center",
   suggestionProvider: "duckduckgo",
   adaptiveHistoryEnabled: false
 };

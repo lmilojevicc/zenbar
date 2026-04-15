@@ -34,6 +34,18 @@ describe("mergeSettings", () => {
     expect(mergeSettings({ adaptiveHistoryEnabled: true }).adaptiveHistoryEnabled).toBe(true);
   });
 
+  it("defaults command position to center", () => {
+    expect(mergeSettings({}).commandPosition).toBe("center");
+  });
+
+  it("preserves explicit top command position preference", () => {
+    expect(mergeSettings({ commandPosition: "top" } as Parameters<typeof mergeSettings>[0]).commandPosition).toBe("top");
+  });
+
+  it("normalizes unsupported command positions to center", () => {
+    expect(mergeSettings({ commandPosition: "bottom" } as Parameters<typeof mergeSettings>[0]).commandPosition).toBe("center");
+  });
+
   it("ignores legacy stored weight settings", () => {
     expect(
       mergeSettings({

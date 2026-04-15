@@ -36,8 +36,8 @@ export async function runQueryEngine(
     }
   }
 
-  const defaultResult = heuristicCandidates[0] ?? null;
   const results = muxQueryResults(context, heuristicCandidates, normalCandidates);
+  const defaultResult = heuristicCandidates[0] ?? null;
   const nextContext: QueryContext = {
     ...context,
     heuristicCandidates,

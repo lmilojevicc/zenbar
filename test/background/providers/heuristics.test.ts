@@ -2,11 +2,10 @@ import { describe, expect, it } from "bun:test";
 
 import { createQueryContext } from "../../../src/background/query-context.js";
 import { runQueryEngine } from "../../../src/background/query-engine.js";
-import { createAutofillHeuristicProvider } from "../../../src/background/providers/heuristic/autofill.js";
 import { createFallbackHeuristicProvider } from "../../../src/background/providers/heuristic/fallback.js";
 import { createHistoryUrlHeuristicProvider } from "../../../src/background/providers/heuristic/history-url.js";
 import { MODES } from "../../../src/shared/constants.js";
-import type { PermissionState, ResultItem, ZenbarSettings } from "../../../src/shared/types.js";
+import type { PermissionState, ZenbarSettings } from "../../../src/shared/types.js";
 
 const baseSettings: ZenbarSettings = {
   sources: {
@@ -14,6 +13,7 @@ const baseSettings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
+  commandPosition: "center",
   suggestionProvider: "off",
   adaptiveHistoryEnabled: false
 };
@@ -62,19 +62,7 @@ describe("heuristic providers", () => {
     });
   });
 
-  it("prefers autofill heuristic over history-url and fallback", async () => {
-    const autofillResult: ResultItem = {
-      id: "autofill:example.com",
-      type: "url",
-      source: "url",
-      url: "https://example.com/",
-      title: "Example",
-      providerId: "autofill-heuristic",
-      heuristic: true,
-      group: "heuristic",
-      dedupeKey: "https://example.com/"
-    };
-
+  it("prefers history-url heuristic over fallback when available", async () => {
     const context = createContext("example.com");
     const response = await runQueryEngine(context, [
       createFallbackHeuristicProvider(),
@@ -86,42 +74,17 @@ describe("heuristic providers", () => {
           url: "https://example.com/",
           title: "Example History"
         })
-      }),
-      createAutofillHeuristicProvider({
-        resolveResult: async () => autofillResult
-      })
-    ]);
-
-    expect(response.defaultResult?.providerId).toBe("autofill-heuristic");
-  });
-
-  it("prefers history-url heuristic when autofill is absent", async () => {
-    const context = createContext("example.com");
-    const response = await runQueryEngine(context, [
-      createFallbackHeuristicProvider(),
-      createHistoryUrlHeuristicProvider({
-        resolveResult: async () => ({
-          id: "history:1",
-          type: "history",
-          source: "history",
-          url: "https://example.com/",
-          title: "Example History"
-        })
-      }),
-      createAutofillHeuristicProvider({
-        resolveResult: async () => null
       })
     ]);
 
     expect(response.defaultResult?.providerId).toBe("history-url-heuristic");
   });
 
-  it("falls back when neither autofill nor history-url produce a result", async () => {
+  it("falls back when history-url does not produce a result", async () => {
     const context = createContext("example.com/foo");
     const response = await runQueryEngine(context, [
       createFallbackHeuristicProvider(),
-      createHistoryUrlHeuristicProvider({ resolveResult: async () => null }),
-      createAutofillHeuristicProvider({ resolveResult: async () => null })
+      createHistoryUrlHeuristicProvider({ resolveResult: async () => null })
     ]);
 
     expect(response.defaultResult?.providerId).toBe("fallback-heuristic");
@@ -143,27 +106,6 @@ describe("heuristic providers", () => {
         source: "history",
         url: "https://example.com/",
         title: "Example History"
-      })
-    });
-
-    expect(await provider.isActive(context)).toBe(false);
-  });
-
-  it("does not activate autofill when all local sources are disabled", async () => {
-    const context = createContext("example.com", {
-      ...baseSettings,
-      sources: {
-        tabs: false,
-        bookmarks: false,
-        history: false
-      }
-    });
-    const provider = createAutofillHeuristicProvider({
-      resolveResult: async () => ({
-        id: "autofill:example.com",
-        type: "url",
-        source: "url",
-        url: "https://example.com/"
       })
     });
 

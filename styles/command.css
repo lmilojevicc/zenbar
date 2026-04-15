@@ -43,18 +43,24 @@ body {
   inset: 0;
   z-index: 1;
   display: grid;
-  place-items: center;
-  padding: 28px;
+  place-items: start center;
+  padding: var(--zenbar-shell-offset, clamp(64px, 10vh, 104px)) 28px 28px;
   box-sizing: border-box;
   color: rgba(244, 244, 248, 0.96);
   font-family: "Bricolage Grotesque", "Inter", "SF Pro Display", system-ui, sans-serif;
 }
 
+.zenbar[data-position="center"] {
+  --zenbar-shell-offset: calc(50vh - 132px);
+}
+
+.zenbar[data-position="top"] {
+  --zenbar-shell-offset: clamp(64px, 10vh, 104px);
+}
+
 .zenbar--window {
   position: relative;
   min-height: 100vh;
-  place-items: center;
-  padding: 28px;
 }
 
 .zenbar__backdrop {
@@ -65,31 +71,35 @@ body {
   background:
     radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.08), transparent 30%),
     rgba(8, 10, 16, 0.2);
-  backdrop-filter: blur(40px) saturate(120%);
+  backdrop-filter: blur(14px) saturate(112%);
 }
 
 .zenbar__panel {
   position: relative;
   z-index: 1;
-  width: min(100%, 640px);
+  width: min(100%, 760px);
   max-height: min(76vh, 680px);
   display: flex;
   flex-direction: column;
-  border: 1px solid #454851;
-  border-radius: 20px;
-  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 12px 16px 10px;
   background:
-    linear-gradient(180deg, rgba(30, 32, 39, 0.82), rgba(18, 19, 25, 0.76)),
-    rgba(15, 16, 21, 0.72);
+    linear-gradient(180deg, rgba(22, 23, 27, 0.62), rgba(15, 16, 20, 0.58)),
+    rgba(10, 11, 14, 0.46);
   box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(56px) saturate(145%);
+    0 16px 38px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px) saturate(118%);
   overflow: hidden;
 }
 
+.zenbar[data-position="center"] .zenbar__panel {
+  width: min(100%, 760px);
+}
+
 .zenbar__heading {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -139,26 +149,24 @@ body {
 .zenbar__input-shell {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 12px;
   margin-top: 0;
-  border: 1px solid #3a3d46;
-  border-radius: 16px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  padding: 4px 4px 14px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .zenbar__input-shell--busy {
-  border-color: #5b616d;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
 }
 
 .zenbar__input-shell:focus-within {
-  border-color: #666d7a;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+  background: transparent;
+  box-shadow: none;
 }
 
 .zenbar__input-icon {
@@ -167,7 +175,7 @@ body {
   height: 20px;
   align-items: center;
   justify-content: center;
-  color: rgba(219, 223, 236, 0.62);
+  color: rgba(232, 233, 236, 0.56);
 }
 
 .zenbar__spinner {
@@ -184,7 +192,7 @@ body {
   border: 0;
   outline: 0;
   background: transparent;
-  color: rgba(247, 248, 251, 0.94);
+  color: rgba(248, 248, 249, 0.9);
   font: inherit;
   font-size: 16px;
   font-weight: 600;
@@ -192,31 +200,40 @@ body {
 }
 
 .zenbar__input::placeholder {
-  color: rgba(182, 185, 196, 0.42);
+  color: rgba(232, 233, 236, 0.34);
 }
 
 .zenbar__helper {
-  margin: 10px 2px 0;
-  color: rgba(196, 199, 209, 0.62);
+  margin: 8px 4px 0;
+  color: rgba(220, 222, 226, 0.42);
   font-size: 13px;
   line-height: 1.4;
 }
 
+.zenbar[data-position="center"] .zenbar__helper {
+  margin-top: 8px;
+}
+
 .zenbar__results {
-  margin-top: 12px;
+  margin-top: 8px;
   display: grid;
-  gap: 8px;
+  gap: 4px;
   min-height: 0;
-  max-height: min(44vh, 360px);
+  max-height: min(42vh, 336px);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 10px 10px 12px;
+  padding: 0;
   align-content: start;
   scrollbar-gutter: stable;
-  border: 1px solid #31343c;
-  border-radius: 16px;
-  background: rgba(10, 11, 15, 0.28);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   transition: opacity 140ms ease;
+}
+
+.zenbar[data-position="center"] .zenbar__results {
+  margin-top: 10px;
+  max-height: min(36vh, 320px);
 }
 
 .zenbar__results::-webkit-scrollbar {
@@ -229,12 +246,12 @@ body {
 }
 
 .zenbar__results::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.08);
   border-radius: 6px;
 }
 
 .zenbar__results::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 .zenbar__results--busy {
@@ -244,18 +261,22 @@ body {
 .zenbar__empty {
   display: grid;
   align-content: center;
-  gap: 8px;
-  min-height: 164px;
-  padding: 20px;
-  border: 1px solid #31343c;
-  border-radius: 16px;
-  background: rgba(10, 11, 15, 0.28);
-  color: rgba(194, 198, 210, 0.66);
+  gap: 6px;
+  min-height: 112px;
+  padding: 18px 4px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(216, 218, 222, 0.52);
   text-align: left;
 }
 
+.zenbar[data-position="center"] .zenbar__empty {
+  min-height: 112px;
+}
+
 .zenbar__empty strong {
-  color: rgba(245, 246, 250, 0.92);
+  color: rgba(246, 246, 247, 0.84);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -269,8 +290,7 @@ body {
 }
 
 .zenbar__empty--loading {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-  border-color: #3a3d46;
+  background: transparent;
 }
 
 .zenbar-result-row {
@@ -279,21 +299,21 @@ body {
   gap: 11px;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 10px 6px;
   background: transparent;
   transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .zenbar-result-row--active {
-  border-color: #535861;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: none;
 }
 
 .zenbar-result-row:hover {
-  border-color: #40444d;
-  background: rgba(255, 255, 255, 0.07);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.018);
 }
 
 .zenbar-result {
@@ -319,7 +339,7 @@ body {
 
 .zenbar-result__close:hover,
 .zenbar-result__close:focus-visible {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .zenbar-result__icon,
@@ -333,7 +353,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(235, 238, 248, 0.74);
+  color: rgba(230, 231, 234, 0.58);
 }
 
 .zenbar-result__favicon {
@@ -354,14 +374,14 @@ body {
 }
 
 .zenbar-result__title {
-  color: rgba(249, 250, 253, 0.94);
+  color: rgba(246, 246, 247, 0.88);
   font-size: 15px;
   font-weight: 560;
   line-height: 1.3;
 }
 
 .zenbar-result__subtitle {
-  color: rgba(195, 198, 210, 0.5);
+  color: rgba(216, 218, 222, 0.36);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -381,10 +401,10 @@ body {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border: 1px solid #393c44;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(220, 223, 235, 0.76);
+  background: rgba(255, 255, 255, 0.012);
+  color: rgba(226, 228, 232, 0.46);
 }
 
 .zenbar-badge svg {
@@ -398,10 +418,10 @@ body {
   justify-content: center;
   width: 26px;
   height: 26px;
-  border: 1px solid #393c44;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(233, 236, 245, 0.74);
+  background: rgba(255, 255, 255, 0.012);
+  color: rgba(226, 228, 232, 0.48);
   font: inherit;
   font-size: 14px;
   line-height: 1;
@@ -426,17 +446,26 @@ svg {
 
 @media (max-width: 720px) {
   .zenbar {
-    padding: 16px;
+    padding: var(--zenbar-shell-offset, clamp(44px, 8vh, 72px)) 16px 16px;
+  }
+
+  .zenbar[data-position="center"] {
+    --zenbar-shell-offset: calc(50vh - 104px);
+  }
+
+  .zenbar[data-position="top"] {
+    --zenbar-shell-offset: clamp(44px, 8vh, 72px);
   }
 
   .zenbar--window {
-    padding: 14px;
+    padding-inline: 14px;
+    padding-bottom: 14px;
   }
 
   .zenbar__panel {
     width: min(100%, 100vw - 24px);
-    border-radius: 18px;
-    padding: 14px;
+    border-radius: 14px;
+    padding: 10px 14px 8px;
     max-height: calc(100vh - 32px);
   }
 

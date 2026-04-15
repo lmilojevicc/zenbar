@@ -1,11 +1,11 @@
 export type Mode = "current-tab" | "new-tab" | "tab-search";
+export type CommandPosition = "center" | "top";
 export type SuggestionProvider = "off" | "duckduckgo";
 export type ResultSource = "searchAction" | "tabs" | "bookmarks" | "history" | "suggestions" | "url" | "inputHistory";
 export type QueryClassification = "empty" | "search" | "origin-like" | "url-like" | "deep-url";
 export type ProviderKind = "heuristic" | "normal";
 export type UserSelectionBehavior = "none" | "arrow" | "pointer";
 export type ProviderId =
-  | "autofill-heuristic"
   | "history-url-heuristic"
   | "fallback-heuristic"
   | "tabs-results"
@@ -32,12 +32,14 @@ export interface SettingsSources {
 
 export interface ZenbarSettings {
   sources: SettingsSources;
+  commandPosition: CommandPosition;
   suggestionProvider: SuggestionProvider;
   adaptiveHistoryEnabled: boolean;
 }
 
 export interface RawZenbarSettings {
   sources?: Partial<SettingsSources>;
+  commandPosition?: string;
   suggestionProvider?: string;
   adaptiveHistoryEnabled?: boolean;
 }
