@@ -221,8 +221,8 @@ describe("getCommandInputState", () => {
       allowDefaultPreview: true
     })).toEqual({
       value: "yor",
-      selectionStart: 3,
-      selectionEnd: 3,
+      selectionStart: null,
+      selectionEnd: null,
       previewResult: null
     });
   });
@@ -245,8 +245,8 @@ describe("getCommandInputState", () => {
       allowDefaultPreview: true
     })).toEqual({
       value: "yor",
-      selectionStart: 3,
-      selectionEnd: 3,
+      selectionStart: null,
+      selectionEnd: null,
       previewResult: null
     });
   });
@@ -269,8 +269,8 @@ describe("getCommandInputState", () => {
       allowDefaultPreview: true
     })).toEqual({
       value: "yor",
-      selectionStart: 3,
-      selectionEnd: 3,
+      selectionStart: null,
+      selectionEnd: null,
       previewResult: null
     });
   });
@@ -289,14 +289,24 @@ describe("getCommandInputState", () => {
       allowDefaultPreview: false
     })).toEqual({
       value: "https://current.example/",
-      selectionStart: 24,
-      selectionEnd: 24,
+      selectionStart: null,
+      selectionEnd: null,
       previewResult: null
     });
   });
 });
 
 describe("getVisibleDefaultResult", () => {
+  it("returns null when the user has not explicitly selected a row", () => {
+    const selectionModel = applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
+      results: [defaultAutofillResult],
+      defaultResult: defaultAutofillResult,
+      allowEmptySelection: false
+    });
+
+    expect(getVisibleDefaultResult(selectionModel, true)).toBeNull();
+  });
+
   it("returns null when the default preview is suppressed", () => {
     const selectionModel = applyQueryResultState(createSelectionModel(MODES.CURRENT_TAB), {
       results: [defaultAutofillResult],
@@ -307,12 +317,12 @@ describe("getVisibleDefaultResult", () => {
     expect(getVisibleDefaultResult(selectionModel, false)).toBeNull();
   });
 
-  it("returns the default result when preview is allowed", () => {
-    const selectionModel = applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
+  it("returns the default result when the user has explicitly selected it", () => {
+    const selectionModel = setExplicitSelection(applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
       results: [defaultAutofillResult],
       defaultResult: defaultAutofillResult,
       allowEmptySelection: false
-    });
+    }), 0, "arrow");
 
     expect(getVisibleDefaultResult(selectionModel, true)).toBe(defaultAutofillResult);
   });

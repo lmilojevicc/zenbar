@@ -121,12 +121,7 @@ export function getHighlightedIndex(model: SelectionModelState, results: ResultI
     return clampIndex(model.explicitIndex, results.length);
   }
 
-  if (!model.defaultResult) {
-    return null;
-  }
-
-  const defaultIndex = results.findIndex((result) => result.id === model.defaultResult?.id);
-  return defaultIndex === -1 ? null : defaultIndex;
+  return null;
 }
 
 export function getSelectedResult(model: SelectionModelState, results: ResultItem[]): ResultItem | null {
@@ -140,7 +135,7 @@ export function getSelectedResult(model: SelectionModelState, results: ResultIte
     return highlightedIndex === null ? null : results[highlightedIndex] ?? null;
   }
 
-  return model.defaultResult;
+  return null;
 }
 
 function clampIndex(index: number, resultCount: number): number | null {

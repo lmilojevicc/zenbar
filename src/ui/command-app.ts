@@ -633,8 +633,8 @@ export function prioritizeTypedQueryResult<T extends PrioritizableResult>(result
 
 export interface CommandInputState {
   value: string;
-  selectionStart: number;
-  selectionEnd: number;
+  selectionStart: number | null;
+  selectionEnd: number | null;
   previewResult: ResultItem | null;
 }
 
@@ -671,14 +671,18 @@ export function getCommandInputState({
 }): CommandInputState {
   return {
     value: typedQuery,
-    selectionStart: typedQuery.length,
-    selectionEnd: typedQuery.length,
+    selectionStart: null,
+    selectionEnd: null,
     previewResult: null
   };
 }
 
 export function getVisibleDefaultResult(selectionModel: SelectionModelState, allowDefaultPreview: boolean): ResultItem | null {
-  return allowDefaultPreview ? selectionModel.defaultResult : null;
+  if (!allowDefaultPreview || selectionModel.explicitIndex === null || !selectionModel.defaultResult) {
+    return null;
+  }
+
+  return selectionModel.defaultResult;
 }
 
 export function getCommandSurfaceStatusState({
@@ -716,7 +720,7 @@ function applyCommandInputState(input: HTMLInputElement, inputState: CommandInpu
     input.value = inputState.value;
   }
 
-  if (!input.matches(":focus")) {
+  if (!input.matches(":focus") || inputState.selectionStart === null || inputState.selectionEnd === null) {
     return;
   }
 

@@ -36,18 +36,18 @@ const secondResult: ResultItem = {
 };
 
 describe("selection model", () => {
-  it("uses the default result when there is no explicit selection", () => {
+  it("keeps non-tab-search selection empty until the user explicitly selects a row", () => {
     const model = applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
       results: [defaultResult, secondResult],
       defaultResult,
       allowEmptySelection: false
     });
 
-    expect(getSelectedResult(model, [defaultResult, secondResult])?.id).toBe("default-search");
-    expect(getHighlightedIndex(model, [defaultResult, secondResult])).toBe(0);
+    expect(getSelectedResult(model, [defaultResult, secondResult])).toBe(null);
+    expect(getHighlightedIndex(model, [defaultResult, secondResult])).toBe(null);
   });
 
-  it("ArrowDown moves from the default result into explicit selection of the next row", () => {
+  it("ArrowDown moves from empty selection into explicit selection of the first row", () => {
     const model = moveSelection(
       applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
         results: [defaultResult, secondResult],
@@ -58,8 +58,8 @@ describe("selection model", () => {
       1
     );
 
-    expect(getHighlightedIndex(model, [defaultResult, secondResult])).toBe(1);
-    expect(getSelectedResult(model, [defaultResult, secondResult])?.id).toBe("history-result");
+    expect(getHighlightedIndex(model, [defaultResult, secondResult])).toBe(0);
+    expect(getSelectedResult(model, [defaultResult, secondResult])?.id).toBe("default-search");
   });
 
   it("typing clears explicit selection and restores the default-result model", () => {
