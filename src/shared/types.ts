@@ -30,25 +30,14 @@ export interface SettingsSources {
   history: boolean;
 }
 
-export interface SettingsWeights {
-  searchAction: number;
-  tabs: number;
-  bookmarks: number;
-  history: number;
-  suggestions: number;
-  currentWindowTabs: number;
-}
-
 export interface ZenbarSettings {
   sources: SettingsSources;
-  weights: SettingsWeights;
   suggestionProvider: SuggestionProvider;
   adaptiveHistoryEnabled: boolean;
 }
 
 export interface RawZenbarSettings {
   sources?: Partial<SettingsSources>;
-  weights?: Partial<SettingsWeights>;
   suggestionProvider?: string;
   adaptiveHistoryEnabled?: boolean;
 }

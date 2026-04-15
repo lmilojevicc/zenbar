@@ -56,7 +56,7 @@ export function createBookmarksResultsProvider({
             openTabId: openTab?.id ?? null,
             openWindowId: openTab?.windowId ?? null,
             iconUrl: getFaviconUrl(bookmark.url, openTab?.favIconUrl || ""),
-            finalScore: baseScore * context.settings.weights.bookmarks,
+            finalScore: baseScore,
             group: "bookmarks",
             providerId: "bookmarks-results",
             dedupeKey: normalizeComparableUrl(bookmark.url)

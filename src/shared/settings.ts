@@ -10,14 +10,9 @@ export function mergeSettings(rawSettings: RawZenbarSettings = {}): ZenbarSettin
 
   return {
     ...defaults,
-    ...rawSettings,
     sources: {
       ...defaults.sources,
       ...rawSettings.sources
-    },
-    weights: {
-      ...defaults.weights,
-      ...rawSettings.weights
     },
     suggestionProvider: rawSettings.suggestionProvider === "duckduckgo" ? "duckduckgo" : "off",
     adaptiveHistoryEnabled: rawSettings.adaptiveHistoryEnabled === true
@@ -56,10 +51,6 @@ export async function patchSettings(patch: RawZenbarSettings): Promise<ZenbarSet
     sources: {
       ...current.sources,
       ...patch.sources
-    },
-    weights: {
-      ...current.weights,
-      ...patch.weights
     }
   });
 }

@@ -33,7 +33,7 @@ export function createSuggestionsResultsProvider({
           title: phrase,
           subtitle: "Search suggestion",
           queryText: phrase,
-          finalScore: fuzzyScore(context.trimmedInput, phrase) * context.settings.weights.suggestions,
+          finalScore: fuzzyScore(context.trimmedInput, phrase),
           group: "suggestions",
           providerId: "suggestions-results",
           dedupeKey: `search:${normalizeText(phrase)}`

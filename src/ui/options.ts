@@ -3,14 +3,12 @@ import {
   DEFAULT_SETTINGS,
   DUCKDUCKGO_ORIGIN,
   MODE_LABELS,
-  SHORTCUTS_URL,
-  SOURCE_LABELS
+  SHORTCUTS_URL
 } from "../shared/constants.js";
 import { getSettings, mergeSettings, patchSettings, saveSettings } from "../shared/settings.js";
 import type { PermissionState, ZenbarSettings } from "../shared/types.js";
 
 type SourceKey = keyof ZenbarSettings["sources"];
-type WeightKey = keyof ZenbarSettings["weights"];
 type PermissionKey = "bookmarks" | "history";
 type Platform = string;
 
@@ -19,14 +17,6 @@ interface SourceDefinition {
   title: string;
   description: string;
   permission: PermissionKey | null;
-}
-
-interface WeightDefinition {
-  key: WeightKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
 }
 
 interface CommandState {
@@ -63,51 +53,6 @@ const sourceDefinitions: SourceDefinition[] = [
   }
 ];
 
-const weightDefinitions: WeightDefinition[] = [
-  {
-    key: "searchAction",
-    label: SOURCE_LABELS.searchAction,
-    min: 0.4,
-    max: 1.8,
-    step: 0.02
-  },
-  {
-    key: "tabs",
-    label: SOURCE_LABELS.tabs,
-    min: 0.4,
-    max: 1.8,
-    step: 0.02
-  },
-  {
-    key: "bookmarks",
-    label: SOURCE_LABELS.bookmarks,
-    min: 0.4,
-    max: 1.8,
-    step: 0.02
-  },
-  {
-    key: "history",
-    label: SOURCE_LABELS.history,
-    min: 0.4,
-    max: 1.8,
-    step: 0.02
-  },
-  {
-    key: "suggestions",
-    label: SOURCE_LABELS.suggestions,
-    min: 0.4,
-    max: 1.8,
-    step: 0.02
-  },
-  {
-    key: "currentWindowTabs",
-    label: "Current window boost",
-    min: 0,
-    max: 1,
-    step: 0.02
-  }
-];
-
 const state: OptionsState = {
   settings: structuredClone(DEFAULT_SETTINGS),
   platform: "unknown",
@@ -131,7 +76,6 @@ function mustGetElement<T extends HTMLElement>(id: string, ctor: { new (): T }):
 
 const elements = {
   sources: mustGetElement("sources", HTMLElement),
-  weights: mustGetElement("weights", HTMLElement),
   suggestions: mustGetElement("suggestions", HTMLElement),
   adaptiveHistory: mustGetElement("adaptive-history", HTMLElement),
   shortcuts: mustGetElement("shortcuts", HTMLElement),
@@ -168,7 +112,6 @@ async function refresh(): Promise<void> {
 
 function render(): void {
   renderSources();
-  renderWeights();
   renderSuggestions();
   renderAdaptiveHistory();
   renderShortcuts();
@@ -247,75 +190,6 @@ function renderSources(): void {
       const granted = await requestPermission(permission);
       await refresh();
       setStatus(granted ? `${labelForKey(permission)} access granted.` : `${labelForKey(permission)} access was not granted.`, !granted);
-    });
-  });
-}
-
-function renderWeights(): void {
-  elements.weights.innerHTML = weightDefinitions
-    .map((weight) => {
-      const value = state.settings.weights[weight.key];
-
-      return `
-        <label class="slider-row">
-          <span class="slider-row__top">
-            <span>${weight.label}</span>
-            <strong data-weight-value="${weight.key}">${value.toFixed(2)}</strong>
-          </span>
-          <input
-            type="range"
-            min="${weight.min}"
-            max="${weight.max}"
-            step="${weight.step}"
-            value="${value}"
-            data-weight-slider="${weight.key}"
-          />
-        </label>
-      `;
-    })
-    .join("");
-
-  elements.weights.querySelectorAll<HTMLInputElement>("[data-weight-slider]").forEach((slider) => {
-    slider.addEventListener("input", (event: Event) => {
-      const target = event.currentTarget;
-
-      if (!(target instanceof HTMLInputElement)) {
-        return;
-      }
-
-      const key = target.dataset.weightSlider as WeightKey | undefined;
-
-      if (!key) {
-        return;
-      }
-
-      const valueElement = elements.weights.querySelector<HTMLElement>(`[data-weight-value="${key}"]`);
-      if (valueElement) {
-        valueElement.textContent = Number(target.value).toFixed(2);
-      }
-    });
-
-    slider.addEventListener("change", async (event: Event) => {
-      const target = event.currentTarget;
-
-      if (!(target instanceof HTMLInputElement)) {
-        return;
-      }
-
-      const key = target.dataset.weightSlider as WeightKey | undefined;
-
-      if (!key) {
-        return;
-      }
-
-      const value = Number(target.value);
-      state.settings = await patchSettings({
-        weights: {
-          [key]: value
-        }
-      });
-      renderWeights();
-      setStatus(`${weightDefinitions.find((entry) => entry.key === key)?.label || key} updated.`);
     });
   });
 }

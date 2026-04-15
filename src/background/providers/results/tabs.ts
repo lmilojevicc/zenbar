@@ -44,7 +44,7 @@ export function createTabsResultsProvider({
             windowId: tab.windowId ?? null,
             pinned: Boolean(tab.pinned),
             iconUrl: getFaviconUrl(tab.url, tab.favIconUrl),
-            finalScore: baseScore * context.settings.weights.tabs,
+            finalScore: baseScore,
             group: "tabs",
             providerId: "tabs-results",
             dedupeKey: normalizeComparableUrl(tab.url)

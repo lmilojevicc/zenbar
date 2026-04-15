@@ -1,10 +1,8 @@
 import {
   COMMAND_TO_MODE,
   DUCKDUCKGO_ORIGIN,
-  MAX_RESULTS,
   MODE_LABELS,
-  MODES,
-  SOURCE_PRIORITY
+  MODES
 } from "../shared/constants.js";
 import { ensureSettings, getSettings } from "../shared/settings.js";
 import { extractDuckDuckGoSuggestionPhrases } from "../shared/duckduckgo.js";
@@ -39,8 +37,6 @@ import {
   getFaviconUrl,
   looksLikeUrl,
   normalizeComparableUrl,
-  normalizeText,
-  normalizeUrlCandidate,
   stripPrefixAndTrim
 } from "../shared/utils.js";
 
@@ -58,24 +54,6 @@ import type {
   UrlResult,
   ZenbarSettings
 } from "../shared/types.js";
-
-interface RankedResult {
-  id: string;
-  type: string;
-  source: string;
-  title?: string;
-  subtitle?: string;
-  url?: string;
-  queryText?: string;
-  iconUrl?: string;
-  finalScore: number;
-  tabId?: number | null;
-  windowId?: number | null;
-  openTabId?: number | null;
-  openWindowId?: number | null;
-  pinned?: boolean;
-  closeable?: boolean;
-}
 
 interface MessagePayload {
   type?: string;
@@ -270,7 +248,7 @@ async function getResults(
 
   if (mode === MODES.TAB_SEARCH) {
     return {
-      results: await buildTabSearchResults(query, currentTab, settings),
+      results: await buildTabSearchResults(query, currentTab),
       defaultResult: null,
       allowEmptySelection: false
     };
@@ -489,65 +467,9 @@ function scoreAutofillCandidate(
   return score;
 }
 
-async function buildGlobalResults(
-  rawQuery: string,
-  currentTab: chrome.tabs.Tab | null,
-  settings: ZenbarSettings,
-  clientId?: string
-): Promise<RankedResult[]> {
-  const query = rawQuery.trim();
-
-  if (!query) {
-    cancelSuggestionRequest(clientId);
-    return [];
-  }
-
-  const permissions = await getPermissionState();
-  const windowTabs = await queryTabsForWindow(currentTab);
-  const openTabByUrl = createOpenTabMap(windowTabs, currentTab?.id);
-
-  const [tabResults, bookmarkResults, historyResults, suggestionResults] = await Promise.all([
-    settings.sources.tabs
-      ? buildOpenTabResults(windowTabs, query, currentTab, settings)
-      : Promise.resolve([]),
-    settings.sources.bookmarks && permissions.bookmarks
-      ? buildBookmarkResults(query, settings, openTabByUrl)
-      : Promise.resolve([]),
-    settings.sources.history && permissions.history
-      ? buildHistoryResults(query, settings, openTabByUrl)
-      : Promise.resolve([]),
-    settings.suggestionProvider === "duckduckgo" && permissions.duckduckgo
-      ? buildSuggestionResults(query, settings, clientId)
-      : Promise.resolve([])
-  ]);
-
-  const searchActionResult: RankedResult[] = looksLikeUrl(query)
-    ? []
-    : [
-        {
-          id: `search:${query}`,
-          type: "search-action",
-          source: "searchAction",
-          title: `Search \"${query}\"`,
-          subtitle: "Use your default browser search engine",
-          queryText: query,
-          finalScore: 120 * settings.weights.searchAction
-        }
-      ];
-
-  return dedupeAndSortResults([
-    ...searchActionResult,
-    ...tabResults,
-    ...bookmarkResults,
-    ...historyResults,
-    ...suggestionResults
-  ]).slice(0, MAX_RESULTS);
-}
-
 async function buildTabSearchResults(
   rawQuery: string,
-  currentTab: chrome.tabs.Tab | null,
-  settings: ZenbarSettings
+  currentTab: chrome.tabs.Tab | null
 ): Promise<ResultItem[]> {
   const query = rawQuery.trim();
   const tabs = await queryTabsForWindow(currentTab);
@@ -565,10 +487,6 @@ async function buildTabSearchResults(
         return null;
       }
 
-      const windowBoost = tab.windowId === currentTab?.windowId
-        ? settings.weights.currentWindowTabs * 100
-        : 0;
-
       return {
         id: `tab:${tab.id}`,
         type: "tab",
@@ -581,7 +499,7 @@ async function buildTabSearchResults(
         pinned: Boolean(tab.pinned),
         iconUrl: getFaviconUrl(tab.url, tab.favIconUrl),
         closeable: true,
-        finalScore: baseScore * settings.weights.tabs + windowBoost
+        finalScore: baseScore
       };
     })
     .filter((result): result is ResultItem => result !== null)
@@ -592,239 +510,6 @@ async function buildTabSearchResults(
 
       return String(left.title).localeCompare(String(right.title));
     });
-}
-
-function buildOpenTabResults(
-  allTabs: chrome.tabs.Tab[],
-  query: string,
-  currentTab: chrome.tabs.Tab | null,
-  settings: ZenbarSettings
-): RankedResult[] {
-  return allTabs
-    .filter((tab) => typeof tab.id === "number" && tab.id !== currentTab?.id && Boolean(tab.url))
-    .map((tab): RankedResult | null => {
-      if (typeof tab.id !== "number" || !tab.url) {
-        return null;
-      }
-
-      const baseScore = fuzzyScore(query, tab.title, tab.url);
-
-      if (baseScore <= 0) {
-        return null;
-      }
-
-      return {
-        id: `tab:${tab.id}`,
-        type: "tab",
-        source: "tabs",
-        title: tab.title || tab.url || "Untitled tab",
-        subtitle: tab.url || "",
-        url: tab.url || "",
-        tabId: tab.id,
-        windowId: tab.windowId ?? null,
-        pinned: Boolean(tab.pinned),
-        iconUrl: getFaviconUrl(tab.url, tab.favIconUrl),
-        finalScore: baseScore * settings.weights.tabs
-      };
-    })
-    .filter((result): result is RankedResult => result !== null);
-}
-
-async function buildBookmarkResults(
-  query: string,
-  settings: ZenbarSettings,
-  openTabByUrl: Map<string, chrome.tabs.Tab>
-): Promise<RankedResult[]> {
-  const bookmarks = await chrome.bookmarks.search(query);
-
-  return bookmarks
-    .filter((bookmark) => Boolean(bookmark.url))
-    .slice(0, 28)
-    .map((bookmark): RankedResult | null => {
-      if (!bookmark.url) {
-        return null;
-      }
-
-      const baseScore = fuzzyScore(query, bookmark.title, bookmark.url);
-
-      if (baseScore <= 0) {
-        return null;
-      }
-
-      const openTab = openTabByUrl.get(normalizeComparableUrl(bookmark.url));
-
-      return {
-        id: `bookmark:${bookmark.id}`,
-        type: "bookmark",
-        source: "bookmarks",
-        title: bookmark.title || bookmark.url,
-        subtitle: bookmark.url,
-        url: bookmark.url,
-        openTabId: openTab?.id ?? null,
-        openWindowId: openTab?.windowId ?? null,
-        iconUrl: getFaviconUrl(bookmark.url, openTab?.favIconUrl || ""),
-        finalScore: baseScore * settings.weights.bookmarks
-      };
-    })
-    .filter((result): result is RankedResult => result !== null);
-}
-
-async function buildHistoryResults(
-  query: string,
-  settings: ZenbarSettings,
-  openTabByUrl: Map<string, chrome.tabs.Tab>
-): Promise<RankedResult[]> {
-  const historyItems = await chrome.history.search({
-    text: query,
-    maxResults: 28,
-    startTime: 0
-  });
-
-  return historyItems
-    .filter((item) => Boolean(item.url))
-    .map((item): RankedResult | null => {
-      if (!item.url) {
-        return null;
-      }
-
-      const baseScore = fuzzyScore(query, item.title, item.url);
-
-      if (baseScore <= 0) {
-        return null;
-      }
-
-      const openTab = openTabByUrl.get(normalizeComparableUrl(item.url));
-
-      return {
-        id: `history:${item.id}`,
-        type: "history",
-        source: "history",
-        title: item.title || item.url,
-        subtitle: item.url,
-        url: item.url,
-        openTabId: openTab?.id ?? null,
-        openWindowId: openTab?.windowId ?? null,
-        iconUrl: getFaviconUrl(item.url),
-        finalScore: baseScore * settings.weights.history
-      };
-    })
-    .filter((result): result is RankedResult => result !== null);
-}
-
-async function buildSuggestionResults(query: string, settings: ZenbarSettings, clientId?: string): Promise<RankedResult[]> {
-  if (!query || looksLikeUrl(query)) {
-    cancelSuggestionRequest(clientId);
-    return [];
-  }
-
-  const controller = createSuggestionController(clientId);
-
-  try {
-    const response = await fetch(
-      `https://duckduckgo.com/ac/?q=${encodeURIComponent(query)}`,
-      {
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json"
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`DuckDuckGo suggestions failed with ${response.status}`);
-    }
-
-    const suggestions = await response.json();
-    const phrases = extractDuckDuckGoSuggestionPhrases(suggestions);
-
-    return phrases
-      .filter((phrase) => phrase.toLowerCase() !== query.toLowerCase())
-      .slice(0, 4)
-      .map((phrase) => ({
-        id: `suggestion:${phrase}`,
-        type: "suggestion",
-        source: "suggestions",
-        title: phrase,
-        subtitle: "Search suggestion",
-        queryText: phrase,
-        finalScore: fuzzyScore(query, phrase) * settings.weights.suggestions
-      }))
-      .filter((entry) => entry.finalScore > 0);
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      return [];
-    }
-
-    console.warn("DuckDuckGo suggestion error", error);
-    return [];
-  } finally {
-    releaseSuggestionController(clientId, controller);
-  }
-}
-
-function dedupeAndSortResults(results: Array<RankedResult | null>): RankedResult[] {
-  const searchMap = new Map<string, RankedResult>();
-  const urlMap = new Map<string, RankedResult>();
-
-  for (const result of results) {
-    if (!result) {
-      continue;
-    }
-
-    if (result.type === "search-action" || result.type === "suggestion") {
-      const key = `${result.type}:${String(result.queryText || result.title).toLowerCase()}`;
-      const existing = searchMap.get(key);
-
-      if (!existing || compareResults(result, existing) < 0) {
-        searchMap.set(key, result);
-      }
-
-      continue;
-    }
-
-    const key = normalizeComparableUrl(result.url) || result.id;
-    const existing = urlMap.get(key);
-
-    if (!existing || compareResults(result, existing) < 0) {
-      urlMap.set(key, result);
-    }
-  }
-
-  return [...searchMap.values(), ...urlMap.values()].sort(compareResults);
-}
-
-function compareResults(left: RankedResult, right: RankedResult): number {
-  if (right.finalScore !== left.finalScore) {
-    return right.finalScore - left.finalScore;
-  }
-
-  const priorityDelta =
-    (SOURCE_PRIORITY[right.source as keyof typeof SOURCE_PRIORITY] ?? 0) -
-    (SOURCE_PRIORITY[left.source as keyof typeof SOURCE_PRIORITY] ?? 0);
-
-  if (priorityDelta !== 0) {
-    return priorityDelta;
-  }
-
-  return String(left.title).localeCompare(String(right.title));
-}
-
-function createOpenTabMap(tabs: chrome.tabs.Tab[], excludedTabId?: number | null): Map<string, chrome.tabs.Tab> {
-  const openTabByUrl = new Map<string, chrome.tabs.Tab>();
-
-  for (const tab of tabs) {
-    if (!tab.url || !tab.id || tab.id === excludedTabId) {
-      continue;
-    }
-
-    const key = normalizeComparableUrl(tab.url);
-
-    if (key && !openTabByUrl.has(key)) {
-      openTabByUrl.set(key, tab);
-    }
-  }
-
-  return openTabByUrl;
 }
 
 async function submitSelection(payload: SubmitPayload | undefined, sender: chrome.runtime.MessageSender): Promise<{ ok: true; closeSurface: boolean }> {

@@ -59,7 +59,7 @@ export function createHistoryResultsProvider({
             openTabId: openTab?.id ?? null,
             openWindowId: openTab?.windowId ?? null,
             iconUrl: getFaviconUrl(item.url),
-            finalScore: baseScore * context.settings.weights.history,
+            finalScore: baseScore,
             group: "history",
             providerId: "history-results",
             dedupeKey: normalizeComparableUrl(item.url)

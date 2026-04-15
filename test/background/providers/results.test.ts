@@ -16,14 +16,6 @@ const settings: ZenbarSettings = {
     bookmarks: true,
     history: true
   },
-  weights: {
-    searchAction: 1.18,
-    tabs: 1.04,
-    bookmarks: 0.96,
-    history: 0.88,
-    suggestions: 0.84,
-    currentWindowTabs: 0.35
-  },
   suggestionProvider: "duckduckgo",
   adaptiveHistoryEnabled: true
 };

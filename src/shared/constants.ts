@@ -50,14 +50,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
     bookmarks: true,
     history: true
   }),
-  weights: Object.freeze({
-    searchAction: 1.18,
-    tabs: 1.04,
-    bookmarks: 0.96,
-    history: 0.88,
-    suggestions: 0.84,
-    currentWindowTabs: 0.35
-  }),
   suggestionProvider: "off",
   adaptiveHistoryEnabled: false
 } satisfies ZenbarSettings);
