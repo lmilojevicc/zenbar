@@ -1,11 +1,11 @@
-export function normalizeText(value) {
+export function normalizeText(value: unknown): string {
   return String(value ?? "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
 }
 
-export function looksLikeUrl(input) {
+export function looksLikeUrl(input: unknown): boolean {
   const value = String(input ?? "").trim();
 
   if (!value || /\s/.test(value)) {
@@ -27,7 +27,7 @@ export function looksLikeUrl(input) {
   return /^[^\s]+\.[^\s]{2,}$/.test(value);
 }
 
-export function normalizeUrlCandidate(input) {
+export function normalizeUrlCandidate(input: unknown): string {
   const raw = String(input ?? "").trim();
 
   if (!raw) {
@@ -45,7 +45,7 @@ export function normalizeUrlCandidate(input) {
   }
 }
 
-export function normalizeComparableUrl(input) {
+export function normalizeComparableUrl(input: unknown): string {
   const value = String(input ?? "").trim();
 
   if (!value) {
@@ -71,7 +71,7 @@ export function normalizeComparableUrl(input) {
   }
 }
 
-export function fuzzyScore(query, ...candidates) {
+export function fuzzyScore(query: unknown, ...candidates: unknown[]): number {
   const normalizedQuery = normalizeText(query);
 
   if (!normalizedQuery) {
@@ -111,7 +111,7 @@ export function fuzzyScore(query, ...candidates) {
   return Math.max(best, 0);
 }
 
-function subsequenceScore(query, target) {
+function subsequenceScore(query: string, target: string): number {
   let queryIndex = 0;
   let streak = 0;
   let score = 0;
@@ -145,7 +145,7 @@ const FAVICON_UNSUPPORTED_PROTOCOLS = new Set([
   "javascript:"
 ]);
 
-export function getFaviconUrl(url, explicitUrl = "") {
+export function getFaviconUrl(url: unknown, explicitUrl = ""): string {
   if (explicitUrl && !isBrowserIconUrl(explicitUrl)) {
     return explicitUrl;
   }
@@ -163,7 +163,7 @@ export function getFaviconUrl(url, explicitUrl = "") {
   }
 }
 
-function isFaviconUnsupported(url) {
+function isFaviconUnsupported(url: string): boolean {
   try {
     const { protocol } = new URL(url);
     return FAVICON_UNSUPPORTED_PROTOCOLS.has(protocol);
@@ -172,7 +172,7 @@ function isFaviconUnsupported(url) {
   }
 }
 
-function isBrowserIconUrl(url) {
+function isBrowserIconUrl(url: string): boolean {
   try {
     const { protocol } = new URL(url);
     return FAVICON_UNSUPPORTED_PROTOCOLS.has(protocol);
@@ -181,6 +181,6 @@ function isBrowserIconUrl(url) {
   }
 }
 
-export function clamp(value, min, max) {
+export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }

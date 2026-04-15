@@ -1,13 +1,48 @@
 import {
   COMMAND_TO_MODE,
+  DEFAULT_SETTINGS,
   DUCKDUCKGO_ORIGIN,
   MODE_LABELS,
   SHORTCUTS_URL,
   SOURCE_LABELS
 } from "../shared/constants.js";
 import { getSettings, mergeSettings, patchSettings, saveSettings } from "../shared/settings.js";
+import type { PermissionState, ZenbarSettings } from "../shared/types.js";
 
-const sourceDefinitions = [
+type SourceKey = keyof ZenbarSettings["sources"];
+type WeightKey = keyof ZenbarSettings["weights"];
+type PermissionKey = "bookmarks" | "history";
+type Platform = string;
+
+interface SourceDefinition {
+  key: SourceKey;
+  title: string;
+  description: string;
+  permission: PermissionKey | null;
+}
+
+interface WeightDefinition {
+  key: WeightKey;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
+interface CommandState {
+  name: string;
+  label: string;
+  shortcut: string;
+}
+
+interface OptionsState {
+  settings: ZenbarSettings;
+  platform: Platform;
+  permissions: PermissionState;
+  commands: CommandState[];
+}
+
+const sourceDefinitions: SourceDefinition[] = [
   {
     key: "tabs",
     title: "Open tabs",
@@ -28,7 +63,7 @@ const sourceDefinitions = [
   }
 ];
 
-const weightDefinitions = [
+const weightDefinitions: WeightDefinition[] = [
   {
     key: "searchAction",
     label: SOURCE_LABELS.searchAction,
@@ -73,8 +108,8 @@ const weightDefinitions = [
   }
 ];
 
-const state = {
-  settings: null,
+const state: OptionsState = {
+  settings: structuredClone(DEFAULT_SETTINGS),
   platform: "unknown",
   permissions: {
     bookmarks: false,
@@ -84,35 +119,45 @@ const state = {
   commands: []
 };
 
+function mustGetElement<T extends HTMLElement>(id: string, ctor: { new (): T }): T {
+  const element = document.getElementById(id);
+
+  if (!(element instanceof ctor)) {
+    throw new Error(`Missing required element: #${id}`);
+  }
+
+  return element;
+}
+
 const elements = {
-  sources: document.getElementById("sources"),
-  weights: document.getElementById("weights"),
-  suggestions: document.getElementById("suggestions"),
-  shortcuts: document.getElementById("shortcuts"),
-  status: document.getElementById("status"),
-  changeShortcuts: document.getElementById("change-shortcuts"),
-  exportButton: document.getElementById("export-settings"),
-  importButton: document.getElementById("import-settings"),
-  importFile: document.getElementById("import-file")
+  sources: mustGetElement("sources", HTMLElement),
+  weights: mustGetElement("weights", HTMLElement),
+  suggestions: mustGetElement("suggestions", HTMLElement),
+  shortcuts: mustGetElement("shortcuts", HTMLElement),
+  status: mustGetElement("status", HTMLElement),
+  changeShortcuts: mustGetElement("change-shortcuts", HTMLButtonElement),
+  exportButton: mustGetElement("export-settings", HTMLButtonElement),
+  importButton: mustGetElement("import-settings", HTMLButtonElement),
+  importFile: mustGetElement("import-file", HTMLInputElement)
 };
 
-boot().catch((error) => {
-  setStatus(error?.message || "Unable to load settings.", true);
+boot().catch((error: unknown) => {
+  setStatus(error instanceof Error ? error.message : "Unable to load settings.", true);
 });
 
-async function boot() {
+async function boot(): Promise<void> {
   bindStaticEvents();
   await refresh();
 }
 
-function bindStaticEvents() {
+function bindStaticEvents(): void {
   elements.changeShortcuts.addEventListener("click", openShortcutsManager);
   elements.exportButton.addEventListener("click", exportSettings);
   elements.importButton.addEventListener("click", () => elements.importFile.click());
   elements.importFile.addEventListener("change", handleImportFile);
 }
 
-async function refresh() {
+async function refresh(): Promise<void> {
   state.settings = await getSettings();
   state.platform = await getPlatform();
   state.permissions = await getPermissionState();
@@ -120,14 +165,14 @@ async function refresh() {
   render();
 }
 
-function render() {
+function render(): void {
   renderSources();
   renderWeights();
   renderSuggestions();
   renderShortcuts();
 }
 
-function renderSources() {
+function renderSources(): void {
   elements.sources.innerHTML = sourceDefinitions
     .map((source) => {
       const enabled = state.settings.sources[source.key];
@@ -158,10 +203,21 @@ function renderSources() {
     })
     .join("");
 
-  elements.sources.querySelectorAll("[data-source-toggle]").forEach((input) => {
-    input.addEventListener("change", async (event) => {
-      const key = event.currentTarget.dataset.sourceToggle;
-      const checked = event.currentTarget.checked;
+  elements.sources.querySelectorAll<HTMLInputElement>("[data-source-toggle]").forEach((input) => {
+    input.addEventListener("change", async (event: Event) => {
+      const target = event.currentTarget;
+
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const key = target.dataset.sourceToggle as SourceKey | undefined;
+
+      if (!key) {
+        return;
+      }
+
+      const checked = target.checked;
       state.settings = await patchSettings({
         sources: {
           [key]: checked
@@ -172,9 +228,20 @@ function renderSources() {
     });
   });
 
-  elements.sources.querySelectorAll("[data-request-permission]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      const permission = event.currentTarget.dataset.requestPermission;
+  elements.sources.querySelectorAll<HTMLButtonElement>("[data-request-permission]").forEach((button) => {
+    button.addEventListener("click", async (event: Event) => {
+      const target = event.currentTarget;
+
+      if (!(target instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      const permission = target.dataset.requestPermission as PermissionKey | undefined;
+
+      if (!permission) {
+        return;
+      }
+
       const granted = await requestPermission(permission);
       await refresh();
       setStatus(granted ? `${labelForKey(permission)} access granted.` : `${labelForKey(permission)} access was not granted.`, !granted);
@@ -182,7 +249,7 @@ function renderSources() {
   });
 }
 
-function renderWeights() {
+function renderWeights(): void {
   elements.weights.innerHTML = weightDefinitions
     .map((weight) => {
       const value = state.settings.weights[weight.key];
@@ -206,15 +273,40 @@ function renderWeights() {
     })
     .join("");
 
-  elements.weights.querySelectorAll("[data-weight-slider]").forEach((slider) => {
-    slider.addEventListener("input", (event) => {
-      const key = event.currentTarget.dataset.weightSlider;
-      elements.weights.querySelector(`[data-weight-value="${key}"]`).textContent = Number(event.currentTarget.value).toFixed(2);
+  elements.weights.querySelectorAll<HTMLInputElement>("[data-weight-slider]").forEach((slider) => {
+    slider.addEventListener("input", (event: Event) => {
+      const target = event.currentTarget;
+
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const key = target.dataset.weightSlider as WeightKey | undefined;
+
+      if (!key) {
+        return;
+      }
+
+      const valueElement = elements.weights.querySelector<HTMLElement>(`[data-weight-value="${key}"]`);
+      if (valueElement) {
+        valueElement.textContent = Number(target.value).toFixed(2);
+      }
     });
 
-    slider.addEventListener("change", async (event) => {
-      const key = event.currentTarget.dataset.weightSlider;
-      const value = Number(event.currentTarget.value);
+    slider.addEventListener("change", async (event: Event) => {
+      const target = event.currentTarget;
+
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const key = target.dataset.weightSlider as WeightKey | undefined;
+
+      if (!key) {
+        return;
+      }
+
+      const value = Number(target.value);
       state.settings = await patchSettings({
         weights: {
           [key]: value
@@ -226,7 +318,7 @@ function renderWeights() {
   });
 }
 
-function renderSuggestions() {
+function renderSuggestions(): void {
   const provider = state.settings.suggestionProvider;
   const hasAccess = state.permissions.duckduckgo;
 
@@ -249,14 +341,26 @@ function renderSuggestions() {
     </div>
   `;
 
-  elements.suggestions.querySelector("#suggestion-provider").addEventListener("change", async (event) => {
-    const nextValue = event.currentTarget.value;
+  const providerSelect = elements.suggestions.querySelector<HTMLSelectElement>("#suggestion-provider");
+
+  if (!providerSelect) {
+    return;
+  }
+
+  providerSelect.addEventListener("change", async (event: Event) => {
+    const target = event.currentTarget;
+
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    const nextValue = target.value === "duckduckgo" ? "duckduckgo" : "off";
 
     if (nextValue === "duckduckgo" && !state.permissions.duckduckgo) {
       const granted = await requestDuckDuckGoPermission();
 
       if (!granted) {
-        event.currentTarget.value = "off";
+        target.value = "off";
         setStatus("DuckDuckGo host access was not granted.", true);
         return;
       }
@@ -269,7 +373,7 @@ function renderSuggestions() {
     setStatus(nextValue === "off" ? "Remote suggestions disabled." : "DuckDuckGo suggestions enabled.");
   });
 
-  const grantButton = elements.suggestions.querySelector("#grant-ddg");
+  const grantButton = elements.suggestions.querySelector<HTMLButtonElement>("#grant-ddg");
 
   if (grantButton) {
     grantButton.addEventListener("click", async () => {
@@ -280,7 +384,7 @@ function renderSuggestions() {
   }
 }
 
-function renderShortcuts() {
+function renderShortcuts(): void {
   const unassignedCount = state.commands.filter((command) => !command.shortcut).length;
   const warning = unassignedCount
     ? `<p class="note">${unassignedCount} command${unassignedCount === 1 ? " is" : "s are"} currently unassigned.</p>`
@@ -306,7 +410,7 @@ function renderShortcuts() {
   `;
 }
 
-async function getPermissionState() {
+async function getPermissionState(): Promise<PermissionState> {
   const [bookmarks, history, duckduckgo] = await Promise.all([
     chrome.permissions.contains({ permissions: ["bookmarks"] }),
     chrome.permissions.contains({ permissions: ["history"] }),
@@ -320,7 +424,7 @@ async function getPermissionState() {
   };
 }
 
-async function getCommandState() {
+async function getCommandState(): Promise<CommandState[]> {
   const commands = await chrome.commands.getAll();
   return Object.entries(COMMAND_TO_MODE).map(([name, mode]) => {
     const command = commands.find((entry) => entry.name === name);
@@ -333,7 +437,7 @@ async function getCommandState() {
   });
 }
 
-async function getPlatform() {
+async function getPlatform(): Promise<Platform> {
   try {
     const info = await chrome.runtime.getPlatformInfo();
     return info?.os || "unknown";
@@ -342,19 +446,15 @@ async function getPlatform() {
   }
 }
 
-async function requestPermission(permission) {
-  if (permission === "bookmarks" || permission === "history") {
-    return await chrome.permissions.request({ permissions: [permission] });
-  }
-
-  return false;
+async function requestPermission(permission: PermissionKey): Promise<boolean> {
+  return await chrome.permissions.request({ permissions: [permission] });
 }
 
-async function requestDuckDuckGoPermission() {
+async function requestDuckDuckGoPermission(): Promise<boolean> {
   return await chrome.permissions.request({ origins: [DUCKDUCKGO_ORIGIN] });
 }
 
-async function openShortcutsManager() {
+async function openShortcutsManager(): Promise<void> {
   try {
     await chrome.tabs.create({ url: SHORTCUTS_URL });
     setStatus("Opened the browser shortcut manager.");
@@ -363,7 +463,7 @@ async function openShortcutsManager() {
   }
 }
 
-function exportSettings() {
+function exportSettings(): void {
   const blob = new Blob([JSON.stringify(state.settings, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -374,9 +474,15 @@ function exportSettings() {
   setStatus("Exported Zenbar settings.");
 }
 
-async function handleImportFile(event) {
-  const [file] = event.currentTarget.files || [];
-  event.currentTarget.value = "";
+async function handleImportFile(event: Event): Promise<void> {
+  const input = event.currentTarget;
+
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const [file] = input.files || [];
+  input.value = "";
 
   if (!file) {
     return;
@@ -388,21 +494,21 @@ async function handleImportFile(event) {
     state.settings = await saveSettings(mergeSettings(parsed));
     await refresh();
     setStatus("Imported Zenbar settings.");
-  } catch (error) {
-    setStatus(error?.message || "The selected file is not valid JSON.", true);
+  } catch (error: unknown) {
+    setStatus(error instanceof Error ? error.message : "The selected file is not valid JSON.", true);
   }
 }
 
-function setStatus(message, isError = false) {
+function setStatus(message: string, isError = false): void {
   elements.status.textContent = message;
   elements.status.dataset.error = isError ? "true" : "false";
 }
 
-function labelForKey(key) {
+function labelForKey(key: string): string {
   return sourceDefinitions.find((source) => source.key === key)?.title || key;
 }
 
-function renderShortcutMarkup(shortcut, platform) {
+function renderShortcutMarkup(shortcut: string, platform: Platform): string {
   if (!shortcut) {
     return '<span class="shortcut-pill shortcut-pill--muted">Unassigned</span>';
   }
@@ -417,12 +523,12 @@ function renderShortcutMarkup(shortcut, platform) {
   return `<span class="shortcut-pill">${keys}</span>`;
 }
 
-function renderKeycap(key, platform) {
+function renderKeycap(key: string, platform: Platform): string {
   const label = getKeycapLabel(key, platform);
   return `<span class="shortcut-key">${escapeHtml(label)}</span>`;
 }
 
-function getKeycapLabel(key, platform) {
+function getKeycapLabel(key: string, platform: Platform): string {
   const normalized = key.toLowerCase();
   const isMac = platform === "mac";
 
@@ -445,7 +551,7 @@ function getKeycapLabel(key, platform) {
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
-function escapeHtml(value) {
+function escapeHtml(value: unknown): string {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")

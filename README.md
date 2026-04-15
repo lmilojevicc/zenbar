@@ -87,6 +87,12 @@ Build:
 bun run build
 ```
 
+Typecheck:
+
+```bash
+bun run typecheck
+```
+
 Run tests:
 
 ```bash

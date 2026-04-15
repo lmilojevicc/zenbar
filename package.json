@@ -5,11 +5,16 @@
   "type": "module",
   "packageManager": "bun@1.3.11",
   "scripts": {
-    "build": "bun run scripts/build.mjs",
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "@types/bun": "^1.3.12",
+    "@types/chrome": "^0.1.40",
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "lucide": "^1.8.0"

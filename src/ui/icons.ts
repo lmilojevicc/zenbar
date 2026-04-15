@@ -10,6 +10,8 @@ import {
   createElement
 } from "lucide";
 
+type IconFactory = typeof Search;
+
 const ICONS = Object.freeze({
   search: Search,
   tab: AppWindowMac,
@@ -19,10 +21,10 @@ const ICONS = Object.freeze({
   globe: Globe,
   spark: Sparkles,
   x: X
-});
+}) satisfies Record<string, IconFactory>;
 
-export function createIcon(name, attrs = {}) {
-  const iconNode = ICONS[name] || ICONS.globe;
+export function createIcon(name: string, attrs: Record<string, string> = {}) {
+  const iconNode = name in ICONS ? ICONS[name as keyof typeof ICONS] : ICONS.globe;
 
   return createElement(iconNode, {
     "aria-hidden": "true",

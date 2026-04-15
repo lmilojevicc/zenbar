@@ -1,9 +1,14 @@
+import type { OpenPayload } from "../shared/types.js";
 import { mountCommandSurface } from "./command-app.js";
 
-export async function createOverlayApp() {
+interface OverlayApp {
+  open: (payload: OpenPayload) => Promise<void>;
+}
+
+export async function createOverlayApp(): Promise<OverlayApp> {
   let host = document.getElementById("zenbar-overlay-root");
 
-  if (!host) {
+  if (!(host instanceof HTMLElement)) {
     host = document.createElement("div");
     host.id = "zenbar-overlay-root";
     document.documentElement.append(host);
@@ -19,7 +24,7 @@ export async function createOverlayApp() {
   host.style.colorScheme = "dark";
   host.style.display = "none";
 
-  const shadowRoot = host.shadowRoot || host.attachShadow({ mode: "open" });
+  const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
 
   if (!shadowRoot.querySelector("link[data-zenbar-style]")) {
     const styleLink = document.createElement("link");
@@ -29,7 +34,7 @@ export async function createOverlayApp() {
     shadowRoot.append(styleLink);
   }
 
-  let mountPoint = shadowRoot.querySelector("[data-zenbar-mount]");
+  let mountPoint = shadowRoot.querySelector<HTMLElement>("[data-zenbar-mount]");
 
   if (!mountPoint) {
     mountPoint = document.createElement("div");
@@ -48,7 +53,7 @@ export async function createOverlayApp() {
   });
 
   return {
-    async open(payload) {
+    async open(payload: OpenPayload) {
       host.style.display = "block";
       await app.open(payload);
     }

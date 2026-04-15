@@ -1,19 +1,52 @@
 import { MODE_META, MODES } from "../shared/constants.js";
+import type {
+  BasicResponse,
+  Mode,
+  OpenPayload,
+  QueryResponse,
+  ResultItem,
+  SerializedTab,
+  SubmitResponse,
+  TogglePinResponse,
+  UiContextResponse
+} from "../shared/types.js";
 import { createIcon } from "./icons.js";
 
-const iconUrlCache = new Map();
+type SurfaceKind = "overlay" | "window";
+type BadgeKind = "tab" | "bookmark" | "pin" | "history";
 
-export function mountCommandSurface({ root, surface = "overlay", closeSurface }) {
+interface MountCommandSurfaceOptions {
+  root: HTMLElement;
+  surface?: SurfaceKind;
+  closeSurface: () => void | Promise<void>;
+}
+
+interface CommandSurfaceApp {
+  open: (payload?: OpenPayload) => Promise<void>;
+}
+
+interface PrioritizableResult {
+  type?: string;
+  queryText?: string | null;
+}
+
+const iconUrlCache = new Map<string, "loaded" | "error">();
+
+export function mountCommandSurface({
+  root,
+  surface = "overlay",
+  closeSurface
+}: MountCommandSurfaceOptions): CommandSurfaceApp {
   const clientId = crypto.randomUUID();
 
-  let mode = MODES.CURRENT_TAB;
-  let contextTabId = null;
-  let currentTab = null;
-  let results = [];
+  let mode: Mode = MODES.CURRENT_TAB;
+  let contextTabId: number | null = null;
+  let currentTab: SerializedTab | null = null;
+  let results: ResultItem[] = [];
   let highlightedIndex = 0;
   let loading = false;
   let submitting = false;
-  let searchTimer = 0;
+  let searchTimer: number | undefined;
   let searchVersion = 0;
   let statusMessage = "";
   let isOpen = false;
@@ -39,14 +72,14 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     </section>
   `;
 
-  const container = root.querySelector(".zenbar");
-  const backdrop = root.querySelector(".zenbar__backdrop");
-  const modeLabel = root.querySelector(".zenbar__mode");
-  const helper = root.querySelector(".zenbar__helper");
-  const input = root.querySelector(".zenbar__input");
-  const inputShell = root.querySelector(".zenbar__input-shell");
-  const inputIcon = root.querySelector(".zenbar__input-icon");
-  const resultsHost = root.querySelector(".zenbar__results");
+  const container = getRequiredElement<HTMLElement>(root, ".zenbar");
+  const backdrop = getRequiredElement<HTMLButtonElement>(root, ".zenbar__backdrop");
+  const modeLabel = getRequiredElement<HTMLElement>(root, ".zenbar__mode");
+  const helper = getRequiredElement<HTMLElement>(root, ".zenbar__helper");
+  const input = getRequiredElement<HTMLInputElement>(root, ".zenbar__input");
+  const inputShell = getRequiredElement<HTMLElement>(root, ".zenbar__input-shell");
+  const inputIcon = getRequiredElement<HTMLElement>(root, ".zenbar__input-icon");
+  const resultsHost = getRequiredElement<HTMLElement>(root, ".zenbar__results");
   const eventRoot = root.getRootNode();
   const ownerDocument = root.ownerDocument;
 
@@ -54,13 +87,15 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 
   backdrop.hidden = surface !== "overlay";
 
-  root.querySelectorAll('[data-action="dismiss"]').forEach((button) => {
+  root.querySelectorAll<HTMLButtonElement>('[data-action="dismiss"]').forEach((button) => {
     button.addEventListener("click", dismiss);
   });
   input.addEventListener("input", handleInput);
   input.addEventListener("keydown", handleKeydown);
-  eventRoot.addEventListener("keydown", handleEscapeKeydown, true);
-  if (ownerDocument !== eventRoot) {
+  if (eventRoot instanceof ShadowRoot || eventRoot instanceof Document) {
+    eventRoot.addEventListener("keydown", handleEscapeKeydown, true);
+  }
+  if (eventRoot !== ownerDocument) {
     ownerDocument.addEventListener("keydown", handleEscapeKeydown, true);
   }
   root.addEventListener("keydown", stopKeyboardEventPropagation);
@@ -76,14 +111,14 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     open
   };
 
-  async function open(payload = {}) {
+  async function open(payload: OpenPayload = {}): Promise<void> {
     isOpen = true;
-    mode = payload.mode || MODES.CURRENT_TAB;
-    contextTabId = Number(payload.contextTabId) || null;
+    mode = payload.mode ?? MODES.CURRENT_TAB;
+    contextTabId = typeof payload.contextTabId === "number" ? payload.contextTabId : null;
     statusMessage = "";
     searchVersion += 1;
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage<UiContextResponse>({
       type: "zenbar/get-context",
       payload: {
         mode,
@@ -91,12 +126,12 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       }
     });
 
-    if (!response?.ok) {
-      throw new Error(response?.error || "Unable to open Zenbar");
+    if (!response.ok) {
+      throw new Error(response.error || "Unable to open Zenbar");
     }
 
     currentTab = response.context.currentTab;
-    input.value = mode === MODES.CURRENT_TAB ? currentTab?.url || "" : "";
+    input.value = mode === MODES.CURRENT_TAB ? currentTab?.url ?? "" : "";
     results = [];
     highlightedIndex = 0;
     loading = false;
@@ -106,8 +141,8 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     restoreInputFocus(mode === MODES.CURRENT_TAB);
   }
 
-  function renderChrome() {
-    const meta = MODE_META[mode] || MODE_META[MODES.CURRENT_TAB];
+  function renderChrome(): void {
+    const meta = MODE_META[mode] ?? MODE_META[MODES.CURRENT_TAB];
     const isBusy = loading ? " zenbar__input-shell--busy" : "";
     const helperText = statusMessage || "";
 
@@ -120,7 +155,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     inputShell.className = `zenbar__input-shell${isBusy}`;
   }
 
-  function renderResults() {
+  function renderResults(): void {
     renderChrome();
     resultsHost.textContent = "";
 
@@ -153,7 +188,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     renderResultRows();
   }
 
-  function renderResultRows() {
+  function renderResultRows(): void {
     highlightedIndex = Math.min(highlightedIndex, results.length - 1);
     highlightedIndex = Math.max(highlightedIndex, 0);
 
@@ -197,7 +232,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       trigger.append(icon, copy);
       row.append(trigger, meta);
 
-      if (result.closeable && result.tabId) {
+      if (result.closeable && typeof result.tabId === "number") {
         const closeButton = document.createElement("button");
         closeButton.type = "button";
         closeButton.className = "zenbar-result__close";
@@ -213,13 +248,13 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 
     resultsHost.append(fragment);
 
-    const activeRow = resultsHost.querySelector(".zenbar-result-row--active");
+    const activeRow = resultsHost.querySelector<HTMLElement>(".zenbar-result-row--active");
     if (activeRow) {
       activeRow.scrollIntoView({ block: "nearest" });
     }
   }
 
-  function getEmptyStateMarkup() {
+  function getEmptyStateMarkup(): string {
     if (mode === MODES.TAB_SEARCH) {
       return input.value.trim()
         ? "<strong>No matching tabs</strong><span>Try a shorter title or URL fragment from this window.</span>"
@@ -231,17 +266,19 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
       : "<strong>Start typing</strong><span>Search, navigate, or jump to a result from this calm command space.</span>";
   }
 
-  function queueSearch(immediate = false) {
-    clearTimeout(searchTimer);
+  function queueSearch(immediate = false): void {
+    if (searchTimer !== undefined) {
+      window.clearTimeout(searchTimer);
+    }
     searchTimer = window.setTimeout(runSearch, immediate ? 0 : 140);
   }
 
-  async function runSearch() {
+  async function runSearch(): Promise<void> {
     const requestId = ++searchVersion;
     loading = true;
     renderResults();
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage<QueryResponse>({
       type: "zenbar/query",
       payload: {
         mode,
@@ -257,25 +294,25 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 
     loading = false;
 
-    if (!response?.ok) {
-      statusMessage = response?.error || "Unable to fetch results.";
+    if (!response.ok) {
+      statusMessage = response.error || "Unable to fetch results.";
       results = [];
       renderResults();
       return;
     }
 
     statusMessage = "";
-    results = prioritizeTypedQueryResult(Array.isArray(response.results) ? response.results : [], input.value, mode);
+    results = prioritizeTypedQueryResult(response.results, input.value, mode);
     renderResults();
   }
 
-  function handleInput() {
+  function handleInput(): void {
     highlightedIndex = 0;
     statusMessage = "";
     queueSearch(false);
   }
 
-  async function handleKeydown(event) {
+  async function handleKeydown(event: KeyboardEvent): Promise<void> {
     if (event.key === "ArrowDown" && results.length) {
       event.preventDefault();
       highlightedIndex = (highlightedIndex + 1) % results.length;
@@ -316,14 +353,14 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     }
   }
 
-  async function submitSelection(index = highlightedIndex) {
+  async function submitSelection(index = highlightedIndex): Promise<void> {
     if (submitting) {
       return;
     }
 
     submitting = true;
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage<SubmitResponse>({
       type: "zenbar/submit",
       payload: {
         mode,
@@ -335,8 +372,8 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 
     submitting = false;
 
-    if (!response?.ok) {
-      statusMessage = response?.error || "Unable to open the selected result.";
+    if (!response.ok) {
+      statusMessage = response.error || "Unable to open the selected result.";
       renderChrome();
       return;
     }
@@ -346,22 +383,22 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     }
   }
 
-  async function closeHighlightedTab(index = highlightedIndex) {
+  async function closeHighlightedTab(index = highlightedIndex): Promise<void> {
     const target = results[index];
 
-    if (!target?.tabId) {
+    if (!target || typeof target.tabId !== "number") {
       return;
     }
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage<BasicResponse>({
       type: "zenbar/close-tab",
       payload: {
         tabId: target.tabId
       }
     });
 
-    if (!response?.ok) {
-      statusMessage = response?.error || "Unable to close the tab.";
+    if (!response.ok) {
+      statusMessage = response.error || "Unable to close the tab.";
       renderChrome();
       return;
     }
@@ -372,22 +409,22 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     queueSearch(true);
   }
 
-  async function toggleHighlightedPin(index = highlightedIndex) {
+  async function toggleHighlightedPin(index = highlightedIndex): Promise<void> {
     const target = results[index];
 
-    if (!target?.tabId || mode !== MODES.TAB_SEARCH) {
+    if (!target || typeof target.tabId !== "number" || mode !== MODES.TAB_SEARCH) {
       return;
     }
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage<TogglePinResponse>({
       type: "zenbar/toggle-pin-tab",
       payload: {
         tabId: target.tabId
       }
     });
 
-    if (!response?.ok) {
-      statusMessage = response?.error || "Unable to update the tab pin state.";
+    if (!response.ok) {
+      statusMessage = response.error || "Unable to update the tab pin state.";
       renderChrome();
       return;
     }
@@ -399,23 +436,27 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
 
       return {
         ...result,
-        pinned: Boolean(response.result?.pinned)
+        pinned: Boolean(response.result.pinned)
       };
     });
 
-    statusMessage = response.result?.pinned ? "Pinned tab." : "Unpinned tab.";
+    statusMessage = response.result.pinned ? "Pinned tab." : "Unpinned tab.";
     renderResults();
   }
 
-  function handleResultsClick(event) {
-    const closeButton = event.target.closest("[data-close-tab]");
+  function handleResultsClick(event: MouseEvent): void {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const closeButton = event.target.closest<HTMLElement>("[data-close-tab]");
 
     if (closeButton) {
       void closeHighlightedTab(Number(closeButton.dataset.closeTab));
       return;
     }
 
-    const trigger = event.target.closest("[data-result-index]");
+    const trigger = event.target.closest<HTMLElement>("[data-result-index]");
 
     if (!trigger) {
       return;
@@ -427,8 +468,12 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     void submitSelection(index);
   }
 
-  function handleResultsHover(event) {
-    const trigger = event.target.closest("[data-result-index]");
+  function handleResultsHover(event: PointerEvent): void {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const trigger = event.target.closest<HTMLElement>("[data-result-index]");
 
     if (!trigger) {
       return;
@@ -442,7 +487,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     }
   }
 
-  function stopKeyboardEventPropagation(event) {
+  function stopKeyboardEventPropagation(event: Event): void {
     if (!isOpen) {
       return;
     }
@@ -450,8 +495,8 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     event.stopPropagation();
   }
 
-  function handleEscapeKeydown(event) {
-    if (!isOpen || event.key !== "Escape") {
+  function handleEscapeKeydown(event: Event): void {
+    if (!isOpen || !(event instanceof KeyboardEvent) || event.key !== "Escape") {
       return;
     }
 
@@ -460,18 +505,20 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
     dismiss();
   }
 
-  function dismiss() {
+  function dismiss(): void {
     if (!isOpen) {
       return;
     }
 
     isOpen = false;
-    clearTimeout(searchTimer);
+    if (searchTimer !== undefined) {
+      window.clearTimeout(searchTimer);
+    }
     searchVersion += 1;
-    closeSurface();
+    void closeSurface();
   }
 
-  function restoreInputFocus(selectAll = false) {
+  function restoreInputFocus(selectAll = false): void {
     const applyFocus = () => {
       input.focus({ preventScroll: true });
 
@@ -490,7 +537,7 @@ export function mountCommandSurface({ root, surface = "overlay", closeSurface })
   }
 }
 
-export function prioritizeTypedQueryResult(results, rawQuery, mode) {
+export function prioritizeTypedQueryResult<T extends PrioritizableResult>(results: T[], rawQuery: string, mode: Mode): T[] {
   if (mode === MODES.TAB_SEARCH) {
     return results;
   }
@@ -502,7 +549,7 @@ export function prioritizeTypedQueryResult(results, rawQuery, mode) {
   }
 
   const prioritizedIndex = results.findIndex(
-    (result) => result?.type === "search-action" && String(result.queryText ?? "").trim().toLowerCase() === query
+    (result) => result.type === "search-action" && String(result.queryText ?? "").trim().toLowerCase() === query
   );
 
   if (prioritizedIndex <= 0) {
@@ -510,13 +557,27 @@ export function prioritizeTypedQueryResult(results, rawQuery, mode) {
   }
 
   return [
-    results[prioritizedIndex],
+    results[prioritizedIndex]!,
     ...results.slice(0, prioritizedIndex),
     ...results.slice(prioritizedIndex + 1)
   ];
 }
 
-function appendIcon(container, result) {
+function getRequiredElement<T extends Element>(root: ParentNode, selector: string): T {
+  const element = root.querySelector<T>(selector);
+
+  if (!element) {
+    throw new Error(`Missing required element: ${selector}`);
+  }
+
+  return element;
+}
+
+async function sendRuntimeMessage<T>(message: { type: string; payload?: unknown }): Promise<T> {
+  return await chrome.runtime.sendMessage(message) as T;
+}
+
+function appendIcon(container: HTMLElement, result: ResultItem): void {
   const fallbackName = iconNameForResult(result);
 
   if (!result.iconUrl) {
@@ -550,13 +611,13 @@ function appendIcon(container, result) {
   container.append(fallback, image);
 
   image.addEventListener("load", () => {
-    iconUrlCache.set(result.iconUrl, "loaded");
+    iconUrlCache.set(result.iconUrl!, "loaded");
     fallback.remove();
     image.style.display = "";
   }, { once: true });
 
   image.addEventListener("error", () => {
-    iconUrlCache.set(result.iconUrl, "error");
+    iconUrlCache.set(result.iconUrl!, "error");
     image.remove();
     fallback.style.display = "";
   }, { once: true });
@@ -564,7 +625,7 @@ function appendIcon(container, result) {
   image.src = result.iconUrl;
 }
 
-function iconNameForResult(result) {
+function iconNameForResult(result: ResultItem): string {
   switch (result.type) {
     case "search-action":
       return "search";
@@ -581,7 +642,7 @@ function iconNameForResult(result) {
   }
 }
 
-function subtitleForResult(result) {
+function subtitleForResult(result: ResultItem): string {
   if (result.url) {
     return result.url;
   }
@@ -597,10 +658,10 @@ function subtitleForResult(result) {
   return "";
 }
 
-function badgesForResult(result) {
-  const badges = [];
+function badgesForResult(result: ResultItem): BadgeKind[] {
+  const badges: BadgeKind[] = [];
 
-  if (!result.closeable && (result.type === "tab" || result.openTabId)) {
+  if (!result.closeable && (result.type === "tab" || typeof result.openTabId === "number")) {
     badges.push("tab");
   }
 
@@ -619,7 +680,7 @@ function badgesForResult(result) {
   return badges;
 }
 
-function buildBadge(kind) {
+function buildBadge(kind: BadgeKind): HTMLElement {
   const badge = document.createElement("span");
   badge.className = "zenbar-badge";
   badge.title = badgeLabel(kind);
@@ -627,7 +688,7 @@ function buildBadge(kind) {
   return badge;
 }
 
-function badgeLabel(kind) {
+function badgeLabel(kind: BadgeKind): string {
   switch (kind) {
     case "tab":
       return "Open tab";
