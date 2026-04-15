@@ -165,7 +165,18 @@ body {
   display: inline-flex;
   width: 20px;
   height: 20px;
+  align-items: center;
+  justify-content: center;
   color: rgba(219, 223, 236, 0.62);
+}
+
+.zenbar__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(219, 223, 236, 0.28);
+  border-top-color: rgba(244, 244, 248, 0.96);
+  border-radius: 999px;
+  animation: zenbar-spin 0.8s linear infinite;
 }
 
 .zenbar__input {
@@ -395,6 +406,12 @@ body {
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
+}
+
+@keyframes zenbar-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .zenbar-result__close svg {

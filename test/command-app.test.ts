@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { MODES } from "../src/shared/constants.js";
-import { prioritizeTypedQueryResult } from "../src/ui/command-app.js";
+import { getCommandSurfaceStatusState, prioritizeTypedQueryResult } from "../src/ui/command-app.js";
 
 describe("prioritizeTypedQueryResult", () => {
   it("moves the exact typed query search action to the top for new-tab mode", () => {
@@ -74,5 +74,46 @@ describe("prioritizeTypedQueryResult", () => {
       historyResult,
       suggestion
     ]);
+  });
+});
+
+describe("getCommandSurfaceStatusState", () => {
+  it("shows a spinner and submit message for new-tab submits", () => {
+    expect(getCommandSurfaceStatusState({
+      mode: MODES.NEW_TAB,
+      loading: false,
+      submitting: true,
+      statusMessage: ""
+    })).toEqual({
+      helperText: "Opening in new tab...",
+      inputIcon: "spinner",
+      isBusy: true
+    });
+  });
+
+  it("shows a spinner and submit message for current-tab submits", () => {
+    expect(getCommandSurfaceStatusState({
+      mode: MODES.CURRENT_TAB,
+      loading: false,
+      submitting: true,
+      statusMessage: ""
+    })).toEqual({
+      helperText: "Opening in current tab...",
+      inputIcon: "spinner",
+      isBusy: true
+    });
+  });
+
+  it("falls back to the search icon and status text when not submitting", () => {
+    expect(getCommandSurfaceStatusState({
+      mode: MODES.NEW_TAB,
+      loading: false,
+      submitting: false,
+      statusMessage: "Unable to open the selected result."
+    })).toEqual({
+      helperText: "Unable to open the selected result.",
+      inputIcon: "search",
+      isBusy: false
+    });
   });
 });

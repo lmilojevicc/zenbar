@@ -24,6 +24,7 @@ import { createIcon } from "./icons.js";
 
 type SurfaceKind = "overlay" | "window";
 type BadgeKind = "tab" | "bookmark" | "pin" | "history";
+type InputIconKind = "search" | "spinner";
 
 interface MountCommandSurfaceOptions {
   root: HTMLElement;
@@ -93,8 +94,6 @@ export function mountCommandSurface({
   const eventRoot = root.getRootNode();
   const ownerDocument = root.ownerDocument;
 
-  inputIcon.append(createIcon("search"));
-
   backdrop.hidden = surface !== "overlay";
 
   root.querySelectorAll<HTMLButtonElement>('[data-action="dismiss"]').forEach((button) => {
@@ -153,8 +152,14 @@ export function mountCommandSurface({
 
   function renderChrome(): void {
     const meta = MODE_META[mode] ?? MODE_META[MODES.CURRENT_TAB];
-    const isBusy = loading ? " zenbar__input-shell--busy" : "";
-    const helperText = statusMessage || "";
+    const visualState = getCommandSurfaceStatusState({
+      mode,
+      loading,
+      submitting,
+      statusMessage
+    });
+    const isBusy = visualState.isBusy ? " zenbar__input-shell--busy" : "";
+    const helperText = visualState.helperText;
 
     container.dataset.mode = mode;
     modeLabel.textContent = meta.label;
@@ -163,6 +168,7 @@ export function mountCommandSurface({
     input.placeholder = meta.placeholder;
 
     inputShell.className = `zenbar__input-shell${isBusy}`;
+    renderInputIcon(inputIcon, visualState.inputIcon);
   }
 
   function renderResults(): void {
@@ -374,6 +380,7 @@ export function mountCommandSurface({
     }
 
     submitting = true;
+    renderChrome();
     const explicitSelection = typeof index === "number"
       ? results[index] || null
       : selectionModel.explicitIndex !== null
@@ -391,9 +398,8 @@ export function mountCommandSurface({
       }
     });
 
-    submitting = false;
-
     if (!response.ok) {
+      submitting = false;
       statusMessage = response.error || "Unable to open the selected result.";
       renderChrome();
       return;
@@ -401,6 +407,7 @@ export function mountCommandSurface({
 
     if (response.closeSurface !== false) {
       dismiss();
+      return;
     }
   }
 
@@ -600,6 +607,36 @@ export function prioritizeTypedQueryResult<T extends PrioritizableResult>(result
   ];
 }
 
+export function getCommandSurfaceStatusState({
+  mode,
+  loading,
+  submitting,
+  statusMessage
+}: {
+  mode: Mode;
+  loading: boolean;
+  submitting: boolean;
+  statusMessage: string;
+}): {
+  helperText: string;
+  inputIcon: InputIconKind;
+  isBusy: boolean;
+} {
+  if (submitting) {
+    return {
+      helperText: mode === MODES.NEW_TAB ? "Opening in new tab..." : "Opening in current tab...",
+      inputIcon: "spinner",
+      isBusy: true
+    };
+  }
+
+  return {
+    helperText: statusMessage || "",
+    inputIcon: "search",
+    isBusy: loading
+  };
+}
+
 function getRequiredElement<T extends Element>(root: ParentNode, selector: string): T {
   const element = root.querySelector<T>(selector);
 
@@ -612,6 +649,25 @@ function getRequiredElement<T extends Element>(root: ParentNode, selector: strin
 
 async function sendRuntimeMessage<T>(message: { type: string; payload?: unknown }): Promise<T> {
   return await chrome.runtime.sendMessage(message) as T;
+}
+
+function renderInputIcon(container: HTMLElement, inputIcon: InputIconKind): void {
+  if (container.dataset.iconKind === inputIcon) {
+    return;
+  }
+
+  container.textContent = "";
+  container.dataset.iconKind = inputIcon;
+
+  if (inputIcon === "spinner") {
+    const spinner = document.createElement("span");
+    spinner.className = "zenbar__spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    container.append(spinner);
+    return;
+  }
+
+  container.append(createIcon("search"));
 }
 
 function appendIcon(container: HTMLElement, result: ResultItem): void {
