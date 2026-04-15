@@ -225,10 +225,19 @@ body {
   padding: 0;
   align-content: start;
   scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   border: 0;
   border-radius: 0;
   background: transparent;
   transition: opacity 140ms ease;
+}
+
+.zenbar__results-tip {
+  margin: 10px 2px 2px;
+  color: rgba(208, 210, 214, 0.44);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .zenbar[data-position="center"] .zenbar__results {
@@ -237,21 +246,7 @@ body {
 }
 
 .zenbar__results::-webkit-scrollbar {
-  width: 6px;
-  background: transparent;
-}
-
-.zenbar__results::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.zenbar__results::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-}
-
-.zenbar__results::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.12);
+  display: none;
 }
 
 .zenbar__results--busy {

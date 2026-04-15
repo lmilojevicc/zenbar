@@ -83,6 +83,7 @@ export function mountCommandSurface({
         </label>
         <p class="zenbar__helper" aria-live="polite"></p>
         <div class="zenbar__results" role="listbox"></div>
+        <p class="zenbar__results-tip"></p>
       </div>
     </section>
   `;
@@ -95,6 +96,7 @@ export function mountCommandSurface({
   const inputShell = getRequiredElement<HTMLElement>(root, ".zenbar__input-shell");
   const inputIcon = getRequiredElement<HTMLElement>(root, ".zenbar__input-icon");
   const resultsHost = getRequiredElement<HTMLElement>(root, ".zenbar__results");
+  const resultsTip = getRequiredElement<HTMLElement>(root, ".zenbar__results-tip");
   const eventRoot = root.getRootNode();
   const ownerDocument = root.ownerDocument;
 
@@ -176,6 +178,8 @@ export function mountCommandSurface({
     modeLabel.textContent = meta.label;
     helper.textContent = helperText;
     helper.hidden = !helperText;
+    resultsTip.textContent = getResultsFooterText(mode);
+    resultsTip.hidden = !resultsTip.textContent;
     input.placeholder = meta.placeholder;
 
     inputShell.className = `zenbar__input-shell${isBusy}`;
@@ -683,6 +687,12 @@ export function getVisibleDefaultResult(selectionModel: SelectionModelState, all
   }
 
   return selectionModel.defaultResult;
+}
+
+export function getResultsFooterText(mode: Mode): string {
+  return mode === MODES.TAB_SEARCH
+    ? "Ctrl/Cmd+X closes the highlighted tab. Ctrl/Cmd+P pins it."
+    : "";
 }
 
 export function getCommandSurfaceStatusState({

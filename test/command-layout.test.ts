@@ -19,6 +19,8 @@ describe("command layout css", () => {
     expect(css).toContain('border-bottom: 1px solid rgba(255, 255, 255, 0.1);');
     expect(css).toContain('background: rgba(255, 255, 255, 0.075);');
     expect(css).toContain('background: rgba(255, 255, 255, 0.018);');
+    expect(css).toContain('scrollbar-width: none;');
+    expect(css).toContain('-ms-overflow-style: none;');
 
     const panelBlock = css.match(/\.zenbar__panel \{[^}]*\}/s)?.[0] ?? "";
     const resultsBlock = css.match(/\.zenbar__results \{[^}]*\}/s)?.[0] ?? "";
@@ -26,6 +28,7 @@ describe("command layout css", () => {
     const inputShellBlock = css.match(/\.zenbar__input-shell \{[^}]*\}/s)?.[0] ?? "";
     const activeRowBlock = css.match(/\.zenbar-result-row--active \{[^}]*\}/s)?.[0] ?? "";
     const hoverRowBlock = css.match(/\.zenbar-result-row:hover \{[^}]*\}/s)?.[0] ?? "";
+    const scrollbarBlock = css.match(/\.zenbar__results::\-webkit-scrollbar \{[^}]*\}/s)?.[0] ?? "";
 
     expect(panelBlock).toContain('width: min(100%, 760px);');
     expect(panelBlock).toContain('border-radius: 16px;');
@@ -37,5 +40,6 @@ describe("command layout css", () => {
     expect(inputShellBlock).toContain('border-bottom: 1px solid rgba(255, 255, 255, 0.1);');
     expect(activeRowBlock).toContain('background: rgba(255, 255, 255, 0.075);');
     expect(hoverRowBlock).toContain('background: rgba(255, 255, 255, 0.018);');
+    expect(scrollbarBlock).toContain('display: none;');
   });
 });

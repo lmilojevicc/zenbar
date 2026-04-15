@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { MODES } from "../src/shared/constants.js";
 import {
   getCommandInputState,
+  getResultsFooterText,
   getCommandSurfaceOpenState,
   getCommandSurfaceStatusState,
   getVisibleDefaultResult,
@@ -325,5 +326,13 @@ describe("getVisibleDefaultResult", () => {
     }), 0, "arrow");
 
     expect(getVisibleDefaultResult(selectionModel, true)).toBe(defaultAutofillResult);
+  });
+});
+
+describe("getResultsFooterText", () => {
+  it("shows tab-search keyboard guidance only in tab search", () => {
+    expect(getResultsFooterText(MODES.TAB_SEARCH)).toBe("Ctrl/Cmd+X closes the highlighted tab. Ctrl/Cmd+P pins it.");
+    expect(getResultsFooterText(MODES.NEW_TAB)).toBe("");
+    expect(getResultsFooterText(MODES.CURRENT_TAB)).toBe("");
   });
 });
