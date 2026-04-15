@@ -1,7 +1,7 @@
 import { MODES } from "../shared/constants.js";
 import { looksLikeUrl, normalizeComparableUrl, normalizeUrlCandidate } from "../shared/utils.js";
 
-import type { Mode, ResultItem, TogglePinResult } from "../shared/types.js";
+import type { Mode, ResultItem, TogglePinResult, ZenbarSettings } from "../shared/types.js";
 
 type MinimalTab = Pick<chrome.tabs.Tab, "id" | "windowId" | "pinned" | "url"> & Partial<chrome.tabs.Tab>;
 
@@ -198,6 +198,28 @@ export function shouldReuseSubmitterTab(
   }
 
   return sender.tab.url.startsWith(windowUrlPrefix);
+}
+
+interface AdaptiveSelectionRecordingOptions {
+  mode: Mode;
+  rawQuery: string;
+  selection: ResultItem | null;
+  settings: ZenbarSettings;
+  recordSelection: (query: string, result: ResultItem, settings: ZenbarSettings) => Promise<void>;
+}
+
+export async function maybeRecordAdaptiveSelection({
+  mode,
+  rawQuery,
+  selection,
+  settings,
+  recordSelection
+}: AdaptiveSelectionRecordingOptions): Promise<void> {
+  if (!settings.adaptiveHistoryEnabled || mode === MODES.TAB_SEARCH || !selection || !rawQuery.trim()) {
+    return;
+  }
+
+  await recordSelection(rawQuery, selection, settings);
 }
 
 export async function activateTabWithChrome(

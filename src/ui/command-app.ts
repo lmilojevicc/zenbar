@@ -10,6 +10,16 @@ import type {
   TogglePinResponse,
   UiContextResponse
 } from "../shared/types.js";
+import {
+  applyQueryResultState,
+  createSelectionModel,
+  getHighlightedIndex,
+  getSelectedResult,
+  moveSelection,
+  resetSelectionForTypedInput,
+  setExplicitSelection,
+  type SelectionModelState
+} from "./selection-model.js";
 import { createIcon } from "./icons.js";
 
 type SurfaceKind = "overlay" | "window";
@@ -43,7 +53,7 @@ export function mountCommandSurface({
   let contextTabId: number | null = null;
   let currentTab: SerializedTab | null = null;
   let results: ResultItem[] = [];
-  let highlightedIndex = 0;
+  let selectionModel: SelectionModelState = createSelectionModel(MODES.CURRENT_TAB);
   let loading = false;
   let submitting = false;
   let searchTimer: number | undefined;
@@ -115,6 +125,7 @@ export function mountCommandSurface({
     isOpen = true;
     mode = payload.mode ?? MODES.CURRENT_TAB;
     contextTabId = typeof payload.contextTabId === "number" ? payload.contextTabId : null;
+    selectionModel = createSelectionModel(mode);
     statusMessage = "";
     searchVersion += 1;
 
@@ -133,7 +144,6 @@ export function mountCommandSurface({
     currentTab = response.context.currentTab;
     input.value = mode === MODES.CURRENT_TAB ? currentTab?.url ?? "" : "";
     results = [];
-    highlightedIndex = 0;
     loading = false;
     renderChrome();
     renderResults();
@@ -189,8 +199,7 @@ export function mountCommandSurface({
   }
 
   function renderResultRows(): void {
-    highlightedIndex = Math.min(highlightedIndex, results.length - 1);
-    highlightedIndex = Math.max(highlightedIndex, 0);
+    const highlightedIndex = getHighlightedIndex(selectionModel, results);
 
     const fragment = document.createDocumentFragment();
 
@@ -297,17 +306,23 @@ export function mountCommandSurface({
     if (!response.ok) {
       statusMessage = response.error || "Unable to fetch results.";
       results = [];
+      selectionModel = applyQueryResultState(resetSelectionForTypedInput(selectionModel), {
+        results: [],
+        defaultResult: null,
+        allowEmptySelection: mode !== MODES.TAB_SEARCH
+      });
       renderResults();
       return;
     }
 
     statusMessage = "";
-    results = prioritizeTypedQueryResult(response.results, input.value, mode);
+    results = response.results;
+    selectionModel = applyQueryResultState(selectionModel, response);
     renderResults();
   }
 
   function handleInput(): void {
-    highlightedIndex = 0;
+    selectionModel = resetSelectionForTypedInput(selectionModel);
     statusMessage = "";
     queueSearch(false);
   }
@@ -315,14 +330,14 @@ export function mountCommandSurface({
   async function handleKeydown(event: KeyboardEvent): Promise<void> {
     if (event.key === "ArrowDown" && results.length) {
       event.preventDefault();
-      highlightedIndex = (highlightedIndex + 1) % results.length;
+      selectionModel = moveSelection(selectionModel, results, 1);
       renderResults();
       return;
     }
 
     if (event.key === "ArrowUp" && results.length) {
       event.preventDefault();
-      highlightedIndex = (highlightedIndex - 1 + results.length) % results.length;
+      selectionModel = moveSelection(selectionModel, results, -1);
       renderResults();
       return;
     }
@@ -353,12 +368,17 @@ export function mountCommandSurface({
     }
   }
 
-  async function submitSelection(index = highlightedIndex): Promise<void> {
+  async function submitSelection(index?: number): Promise<void> {
     if (submitting) {
       return;
     }
 
     submitting = true;
+    const explicitSelection = typeof index === "number"
+      ? results[index] || null
+      : selectionModel.explicitIndex !== null
+        ? getSelectedResult(selectionModel, results)
+        : null;
 
     const response = await sendRuntimeMessage<SubmitResponse>({
       type: "zenbar/submit",
@@ -366,7 +386,8 @@ export function mountCommandSurface({
         mode,
         contextTabId,
         rawQuery: input.value,
-        selectedResult: results[index] || null
+        selectedResult: explicitSelection,
+        defaultResult: selectionModel.defaultResult
       }
     });
 
@@ -383,8 +404,14 @@ export function mountCommandSurface({
     }
   }
 
-  async function closeHighlightedTab(index = highlightedIndex): Promise<void> {
-    const target = results[index];
+  async function closeHighlightedTab(index?: number): Promise<void> {
+    const targetIndex = typeof index === "number" ? index : getHighlightedIndex(selectionModel, results);
+
+    if (targetIndex === null) {
+      return;
+    }
+
+    const target = results[targetIndex];
 
     if (!target || typeof target.tabId !== "number") {
       return;
@@ -404,13 +431,23 @@ export function mountCommandSurface({
     }
 
     results = results.filter((result) => result.tabId !== target.tabId);
-    highlightedIndex = Math.max(Math.min(index - 1, results.length - 1), 0);
+    selectionModel = applyQueryResultState(selectionModel, {
+      results,
+      defaultResult: selectionModel.defaultResult,
+      allowEmptySelection: selectionModel.allowEmptySelection
+    });
     renderResults();
     queueSearch(true);
   }
 
-  async function toggleHighlightedPin(index = highlightedIndex): Promise<void> {
-    const target = results[index];
+  async function toggleHighlightedPin(index?: number): Promise<void> {
+    const targetIndex = typeof index === "number" ? index : getHighlightedIndex(selectionModel, results);
+
+    if (targetIndex === null) {
+      return;
+    }
+
+    const target = results[targetIndex];
 
     if (!target || typeof target.tabId !== "number" || mode !== MODES.TAB_SEARCH) {
       return;
@@ -463,7 +500,7 @@ export function mountCommandSurface({
     }
 
     const index = Number(trigger.dataset.resultIndex);
-    highlightedIndex = index;
+    selectionModel = setExplicitSelection(selectionModel, index, "pointer");
     renderResults();
     void submitSelection(index);
   }
@@ -481,8 +518,8 @@ export function mountCommandSurface({
 
     const nextIndex = Number(trigger.dataset.resultIndex);
 
-    if (nextIndex !== highlightedIndex) {
-      highlightedIndex = nextIndex;
+    if (nextIndex !== getHighlightedIndex(selectionModel, results)) {
+      selectionModel = setExplicitSelection(selectionModel, nextIndex, "pointer");
       renderResults();
     }
   }

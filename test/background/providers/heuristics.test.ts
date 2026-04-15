@@ -135,4 +135,46 @@ describe("heuristic providers", () => {
     expect(response.defaultResult?.providerId).toBe("fallback-heuristic");
     expect(response.defaultResult?.type).toBe("url");
   });
+
+  it("does not activate the history-url heuristic when history source is disabled", async () => {
+    const context = createContext("example.com", {
+      ...baseSettings,
+      sources: {
+        ...baseSettings.sources,
+        history: false
+      }
+    });
+    const provider = createHistoryUrlHeuristicProvider({
+      resolveResult: async () => ({
+        id: "history:1",
+        type: "history",
+        source: "history",
+        url: "https://example.com/",
+        title: "Example History"
+      })
+    });
+
+    expect(await provider.isActive(context)).toBe(false);
+  });
+
+  it("does not activate autofill when all local sources are disabled", async () => {
+    const context = createContext("example.com", {
+      ...baseSettings,
+      sources: {
+        tabs: false,
+        bookmarks: false,
+        history: false
+      }
+    });
+    const provider = createAutofillHeuristicProvider({
+      resolveResult: async () => ({
+        id: "autofill:example.com",
+        type: "url",
+        source: "url",
+        url: "https://example.com/"
+      })
+    });
+
+    expect(await provider.isActive(context)).toBe(false);
+  });
 });

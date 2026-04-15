@@ -14,7 +14,13 @@ export function createHistoryUrlHeuristicProvider({
     kind: "heuristic",
     group: "heuristic",
     priority: 20,
-    isActive: (context) => context.mode !== MODES.TAB_SEARCH && context.permissions.history,
+    isActive: (context) => (
+      context.mode !== MODES.TAB_SEARCH
+      && context.permissions.history
+      && context.allowedSources.includes("history")
+      && context.classification !== "empty"
+      && context.classification !== "search"
+    ),
     start: async (context) => {
       const result = await resolveResult(context);
 

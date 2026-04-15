@@ -9,19 +9,39 @@ import {
 import { ensureSettings, getSettings } from "../shared/settings.js";
 import { extractDuckDuckGoSuggestionPhrases } from "../shared/duckduckgo.js";
 import {
+  createAdaptiveHistoryStore,
+} from "./adaptive-history-store.js";
+import {
+  createQueryContext,
+} from "./query-context.js";
+import {
+  runQueryEngine,
+} from "./query-engine.js";
+import {
   activateTabWithChrome,
   createSubmitHandlers,
   findMatchingTabWithChrome,
   inferImplicitSelection,
+  maybeRecordAdaptiveSelection,
   shouldReuseSubmitterTab as shouldReuseSubmitterTabForWindow,
   type ExecutionResult
 } from "./submit.js";
+import { createAutofillHeuristicProvider } from "./providers/heuristic/autofill.js";
+import { createFallbackHeuristicProvider } from "./providers/heuristic/fallback.js";
+import { createHistoryUrlHeuristicProvider } from "./providers/heuristic/history-url.js";
+import { createBookmarksResultsProvider } from "./providers/results/bookmarks.js";
+import { createHistoryResultsProvider } from "./providers/results/history.js";
+import { createInputHistoryResultsProvider } from "./providers/results/input-history.js";
+import { createSuggestionsResultsProvider } from "./providers/results/suggestions.js";
+import { createTabsResultsProvider } from "./providers/results/tabs.js";
 import {
   fuzzyScore,
   getFaviconUrl,
   looksLikeUrl,
   normalizeComparableUrl,
-  normalizeUrlCandidate
+  normalizeText,
+  normalizeUrlCandidate,
+  stripPrefixAndTrim
 } from "../shared/utils.js";
 
 import type {
@@ -67,6 +87,7 @@ interface CloseTabPayload {
 }
 
 const suggestionControllers = new Map<string, AbortController>();
+const adaptiveHistoryStore = createAdaptiveHistoryStore();
 const submitHandlers = createSubmitHandlers({
   activateTab: (tabId, windowId) => activateTabWithChrome(
     tabId,
@@ -142,7 +163,7 @@ async function handleMessage(message: MessagePayload & { type: string }, sender:
     case "zenbar/query":
       return {
         ok: true,
-        results: await getResults(message.payload as QueryPayload | undefined, sender)
+        ...(await getResults(message.payload as QueryPayload | undefined, sender))
       };
 
     case "zenbar/submit":
@@ -159,6 +180,10 @@ async function handleMessage(message: MessagePayload & { type: string }, sender:
         ok: true,
         result: await submitHandlers.togglePinnedTab((message.payload as CloseTabPayload | undefined)?.tabId)
       };
+
+    case "zenbar/clear-adaptive-history":
+      await adaptiveHistoryStore.clearAdaptiveHistory();
+      return { ok: true };
 
     default:
       return {
@@ -234,17 +259,234 @@ async function getUiContext(payload: OpenPayload | undefined, sender: chrome.run
   };
 }
 
-async function getResults(payload: QueryPayload | undefined, sender: chrome.runtime.MessageSender): Promise<RankedResult[]> {
+async function getResults(
+  payload: QueryPayload | undefined,
+  sender: chrome.runtime.MessageSender
+): Promise<{ results: ResultItem[]; defaultResult: ResultItem | null; allowEmptySelection: boolean }> {
   const mode = payload?.mode ?? MODES.CURRENT_TAB;
   const query = String(payload?.query ?? "");
   const currentTab = await resolveContextTab(payload?.contextTabId, sender);
   const settings = await getSettings();
 
   if (mode === MODES.TAB_SEARCH) {
-    return await buildTabSearchResults(query, currentTab, settings);
+    return {
+      results: await buildTabSearchResults(query, currentTab, settings),
+      defaultResult: null,
+      allowEmptySelection: false
+    };
   }
 
-  return await buildGlobalResults(query, currentTab, settings, payload?.clientId);
+  const permissions = await getPermissionState();
+  const context = createQueryContext({
+    requestId: `${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+    clientId: payload?.clientId,
+    mode,
+    rawInput: query,
+    currentTab,
+    settings,
+    permissions
+  });
+
+  const response = await runQueryEngine(context, createUrlbarProviders(context));
+
+  return {
+    results: response.results,
+    defaultResult: response.defaultResult,
+    allowEmptySelection: response.allowEmptySelection
+  };
+}
+
+function createUrlbarProviders(context: ReturnType<typeof createQueryContext>) {
+  return [
+    createAutofillHeuristicProvider({
+      resolveResult: resolveAutofillHeuristicResult
+    }),
+    createHistoryUrlHeuristicProvider({
+      resolveResult: resolveHistoryUrlHeuristicResult
+    }),
+    createFallbackHeuristicProvider(),
+    createInputHistoryResultsProvider(adaptiveHistoryStore),
+    createTabsResultsProvider({
+      queryTabsForWindow
+    }),
+    createBookmarksResultsProvider({
+      queryTabsForWindow
+    }),
+    createHistoryResultsProvider({
+      queryTabsForWindow
+    }),
+    createSuggestionsResultsProvider({
+      fetchSuggestions: (query) => fetchDuckDuckGoSuggestions(query, context.clientId)
+    })
+  ];
+}
+
+async function resolveAutofillHeuristicResult(context: ReturnType<typeof createQueryContext>): Promise<ResultItem | null> {
+  if (context.classification === "search" || context.classification === "empty") {
+    return null;
+  }
+
+  const [adaptiveMatches, windowTabs, bookmarks, historyItems] = await Promise.all([
+    context.allowedSources.includes("inputHistory")
+      ? adaptiveHistoryStore.getAdaptiveMatches(context.trimmedInput, context.settings)
+      : Promise.resolve([]),
+    context.allowedSources.includes("tabs")
+      ? queryTabsForWindow(context.currentTab)
+      : Promise.resolve([]),
+    context.allowedSources.includes("bookmarks") && context.permissions.bookmarks
+      ? chrome.bookmarks.search(context.trimmedInput)
+      : Promise.resolve([]),
+    context.allowedSources.includes("history") && context.permissions.history
+      ? chrome.history.search({
+          text: context.trimmedInput,
+          maxResults: 16,
+          startTime: 0
+        })
+      : Promise.resolve([])
+  ]);
+
+  const candidates = [
+    ...adaptiveMatches.map((entry) => entry.result),
+    ...windowTabs
+      .filter((tab) => Boolean(tab.url))
+      .map((tab) => ({
+        id: `autofill-tab:${tab.id}`,
+        type: "url" as const,
+        source: "url" as const,
+        title: tab.title || tab.url || "Untitled tab",
+        subtitle: tab.url || "",
+        url: tab.url || "",
+        openTabId: tab.id ?? null,
+        openWindowId: tab.windowId ?? null,
+        iconUrl: getFaviconUrl(tab.url, tab.favIconUrl),
+        dedupeKey: normalizeComparableUrl(tab.url)
+      })),
+    ...bookmarks
+      .filter((bookmark) => Boolean(bookmark.url))
+      .map((bookmark) => ({
+        id: `autofill-bookmark:${bookmark.id}`,
+        type: "url" as const,
+        source: "url" as const,
+        title: bookmark.title || bookmark.url || "Bookmark",
+        subtitle: bookmark.url || "",
+        url: bookmark.url || "",
+        dedupeKey: normalizeComparableUrl(bookmark.url)
+      })),
+    ...historyItems
+      .filter((item) => Boolean(item.url))
+      .map((item) => ({
+        id: `autofill-history:${item.id}`,
+        type: "url" as const,
+        source: "url" as const,
+        title: item.title || item.url || "History",
+        subtitle: item.url || "",
+        url: item.url || "",
+        dedupeKey: normalizeComparableUrl(item.url)
+      }))
+  ];
+
+  const bestCandidate = candidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreAutofillCandidate(context, candidate.url, candidate.title)
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)[0];
+
+  if (!bestCandidate) {
+    return null;
+  }
+
+  return {
+    ...bestCandidate.candidate,
+    finalScore: bestCandidate.score
+  };
+}
+
+async function resolveHistoryUrlHeuristicResult(context: ReturnType<typeof createQueryContext>): Promise<ResultItem | null> {
+  if (!context.permissions.history || !context.normalizedUrlCandidate) {
+    return null;
+  }
+
+  const historyItems = await chrome.history.search({
+    text: context.trimmedInput,
+    maxResults: 12,
+    startTime: 0
+  });
+  const matchingItem = historyItems.find((item) => item.url && normalizeComparableUrl(item.url) === normalizeComparableUrl(context.normalizedUrlCandidate));
+
+  if (!matchingItem?.url || !matchingItem.title) {
+    return null;
+  }
+
+  return {
+    id: `history-heuristic:${matchingItem.id}`,
+    type: "history",
+    source: "history",
+    title: matchingItem.title,
+    subtitle: matchingItem.url,
+    url: matchingItem.url,
+    iconUrl: getFaviconUrl(matchingItem.url),
+    dedupeKey: normalizeComparableUrl(matchingItem.url)
+  };
+}
+
+async function fetchDuckDuckGoSuggestions(query: string, clientId?: string): Promise<string[]> {
+  if (!query || looksLikeUrl(query)) {
+    cancelSuggestionRequest(clientId);
+    return [];
+  }
+
+  const controller = createSuggestionController(clientId);
+
+  try {
+    const response = await fetch(`https://duckduckgo.com/ac/?q=${encodeURIComponent(query)}`, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`DuckDuckGo suggestions failed with ${response.status}`);
+    }
+
+    return extractDuckDuckGoSuggestionPhrases(await response.json());
+  } finally {
+    releaseSuggestionController(clientId, controller);
+  }
+}
+
+function scoreAutofillCandidate(
+  context: ReturnType<typeof createQueryContext>,
+  candidateUrl: string | undefined,
+  candidateTitle?: string
+): number {
+  if (!candidateUrl) {
+    return 0;
+  }
+
+  const comparableCandidateUrl = normalizeComparableUrl(candidateUrl);
+  const comparableInputUrl = context.normalizedUrlCandidate ? normalizeComparableUrl(context.normalizedUrlCandidate) : "";
+  const strippedCandidate = stripPrefixAndTrim(candidateUrl);
+  const strippedInput = context.strippedInput;
+  let score = 0;
+
+  if (comparableInputUrl && comparableCandidateUrl === comparableInputUrl) {
+    score += 400;
+  }
+
+  if (comparableInputUrl && comparableCandidateUrl.startsWith(comparableInputUrl)) {
+    score += 240;
+  }
+
+  if (strippedInput && strippedCandidate.startsWith(strippedInput)) {
+    score += 180;
+  }
+
+  score += fuzzyScore(context.trimmedInput, candidateTitle, candidateUrl);
+
+  return score;
 }
 
 async function buildGlobalResults(
@@ -306,13 +548,13 @@ async function buildTabSearchResults(
   rawQuery: string,
   currentTab: chrome.tabs.Tab | null,
   settings: ZenbarSettings
-): Promise<RankedResult[]> {
+): Promise<ResultItem[]> {
   const query = rawQuery.trim();
   const tabs = await queryTabsForWindow(currentTab);
 
   return tabs
     .filter((tab) => typeof tab.id === "number" && tab.id !== currentTab?.id && Boolean(tab.url))
-    .map((tab): RankedResult | null => {
+    .map((tab): ResultItem | null => {
       if (typeof tab.id !== "number" || !tab.url) {
         return null;
       }
@@ -342,8 +584,14 @@ async function buildTabSearchResults(
         finalScore: baseScore * settings.weights.tabs + windowBoost
       };
     })
-    .filter((result): result is RankedResult => result !== null)
-    .sort(compareResults);
+    .filter((result): result is ResultItem => result !== null)
+    .sort((left, right) => {
+      if ((right.finalScore ?? 0) !== (left.finalScore ?? 0)) {
+        return (right.finalScore ?? 0) - (left.finalScore ?? 0);
+      }
+
+      return String(left.title).localeCompare(String(right.title));
+    });
 }
 
 function buildOpenTabResults(
@@ -582,7 +830,9 @@ function createOpenTabMap(tabs: chrome.tabs.Tab[], excludedTabId?: number | null
 async function submitSelection(payload: SubmitPayload | undefined, sender: chrome.runtime.MessageSender): Promise<{ ok: true; closeSurface: boolean }> {
   const mode = payload?.mode ?? MODES.CURRENT_TAB;
   const rawQuery = String(payload?.rawQuery ?? "").trim();
-  const selection = (payload?.selectedResult as ResultItem | null | undefined) ?? inferImplicitSelection(rawQuery);
+  const selection = (payload?.selectedResult as ResultItem | null | undefined)
+    ?? (payload?.defaultResult as ResultItem | null | undefined)
+    ?? inferImplicitSelection(rawQuery);
   const reuseSubmitterTab = shouldReuseSubmitterTab(mode, sender);
   const submitterTabId = sender?.tab?.id ?? null;
   const contextTab = await resolveContextTab(payload?.contextTabId, sender);
@@ -607,6 +857,14 @@ async function submitSelection(payload: SubmitPayload | undefined, sender: chrom
     rawQuery,
     submitterTabId,
     reuseSubmitterTab
+  });
+
+  await maybeRecordAdaptiveSelection({
+    mode,
+    rawQuery,
+    selection,
+    settings: await getSettings(),
+    recordSelection: (query, result, settings) => adaptiveHistoryStore.recordSelection(query, result, settings)
   });
 
   return {

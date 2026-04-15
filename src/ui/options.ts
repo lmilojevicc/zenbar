@@ -133,6 +133,7 @@ const elements = {
   sources: mustGetElement("sources", HTMLElement),
   weights: mustGetElement("weights", HTMLElement),
   suggestions: mustGetElement("suggestions", HTMLElement),
+  adaptiveHistory: mustGetElement("adaptive-history", HTMLElement),
   shortcuts: mustGetElement("shortcuts", HTMLElement),
   status: mustGetElement("status", HTMLElement),
   changeShortcuts: mustGetElement("change-shortcuts", HTMLButtonElement),
@@ -169,6 +170,7 @@ function render(): void {
   renderSources();
   renderWeights();
   renderSuggestions();
+  renderAdaptiveHistory();
   renderShortcuts();
 }
 
@@ -380,6 +382,69 @@ function renderSuggestions(): void {
       const granted = await requestDuckDuckGoPermission();
       await refresh();
       setStatus(granted ? "DuckDuckGo host access granted." : "DuckDuckGo host access was not granted.", !granted);
+    });
+  }
+}
+
+function renderAdaptiveHistory(): void {
+  const enabled = state.settings.adaptiveHistoryEnabled;
+
+  elements.adaptiveHistory.innerHTML = `
+    <div class="stack">
+      <article class="control-row">
+        <div>
+          <div class="control-title-row">
+            <h3>Improve ranking from my picks</h3>
+            <span class="pill${enabled ? "" : " pill--muted"}">${enabled ? "Enabled" : "Disabled"}</span>
+          </div>
+          <p>When enabled, Zenbar stores your chosen results locally in this browser profile and uses them to improve future ranking.</p>
+        </div>
+        <div class="control-actions">
+          <label class="toggle">
+            <input type="checkbox" id="adaptive-history-toggle" ${enabled ? "checked" : ""} />
+            <span>${enabled ? "On" : "Off"}</span>
+          </label>
+        </div>
+      </article>
+      <div class="inline-actions">
+        <button id="clear-adaptive-history" class="ghost-button" type="button">Clear Learned History</button>
+      </div>
+      <p class="note">Adaptive learning stays local to Zenbar. It is separate from optional browser history permission.</p>
+    </div>
+  `;
+
+  const toggle = elements.adaptiveHistory.querySelector<HTMLInputElement>("#adaptive-history-toggle");
+
+  if (toggle) {
+    toggle.addEventListener("change", async (event: Event) => {
+      const target = event.currentTarget;
+
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      state.settings = await patchSettings({
+        adaptiveHistoryEnabled: target.checked
+      });
+      renderAdaptiveHistory();
+      setStatus(target.checked ? "Adaptive ranking enabled." : "Adaptive ranking disabled.");
+    });
+  }
+
+  const clearButton = elements.adaptiveHistory.querySelector<HTMLButtonElement>("#clear-adaptive-history");
+
+  if (clearButton) {
+    clearButton.addEventListener("click", async () => {
+      const response = await chrome.runtime.sendMessage({
+        type: "zenbar/clear-adaptive-history"
+      }) as { ok?: boolean; error?: string };
+
+      if (!response?.ok) {
+        setStatus(response?.error || "Unable to clear learned history.", true);
+        return;
+      }
+
+      setStatus("Cleared learned history.");
     });
   }
 }

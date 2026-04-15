@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { MODES } from "../../src/shared/constants.js";
-import { createSubmitHandlers, inferImplicitSelection } from "../../src/background/submit.js";
+import { createSubmitHandlers, inferImplicitSelection, maybeRecordAdaptiveSelection } from "../../src/background/submit.js";
 
 describe("inferImplicitSelection", () => {
   it("returns a URL result for URL-like input", () => {
@@ -85,5 +85,66 @@ describe("createSubmitHandlers", () => {
         tabId: 99
       }
     ]);
+  });
+
+  it("records adaptive history selections only for non-tab-search queries", async () => {
+    const calls: Array<{ query: string; resultId: string }> = [];
+
+    await maybeRecordAdaptiveSelection({
+      mode: MODES.NEW_TAB,
+      rawQuery: "cats",
+      selection: {
+        id: "search:cats",
+        type: "search-action",
+        source: "searchAction",
+        title: 'Search "cats"',
+        queryText: "cats"
+      },
+      settings: {
+        sources: { tabs: true, bookmarks: true, history: true },
+        weights: {
+          searchAction: 1.18,
+          tabs: 1.04,
+          bookmarks: 0.96,
+          history: 0.88,
+          suggestions: 0.84,
+          currentWindowTabs: 0.35
+        },
+        suggestionProvider: "off",
+        adaptiveHistoryEnabled: true
+      },
+      recordSelection: async (query, result) => {
+        calls.push({ query, resultId: result.id });
+      }
+    });
+
+    await maybeRecordAdaptiveSelection({
+      mode: MODES.TAB_SEARCH,
+      rawQuery: "cats",
+      selection: {
+        id: "tab:1",
+        type: "tab",
+        source: "tabs",
+        tabId: 1
+      },
+      settings: {
+        sources: { tabs: true, bookmarks: true, history: true },
+        weights: {
+          searchAction: 1.18,
+          tabs: 1.04,
+          bookmarks: 0.96,
+          history: 0.88,
+          suggestions: 0.84,
+          currentWindowTabs: 0.35
+        },
+        suggestionProvider: "off",
+        adaptiveHistoryEnabled: true
+      },
+      recordSelection: async (query, result) => {
+        calls.push({ query, resultId: result.id });
+      }
+    });
+
+    expect(calls).toEqual([{ query: "cats", resultId: "search:cats" }]);
   });
 });

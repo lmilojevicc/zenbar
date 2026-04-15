@@ -153,6 +153,7 @@ export interface QueryPayload extends OpenPayload {
 export interface SubmitPayload extends OpenPayload {
   rawQuery?: string;
   selectedResult?: ResultItem | null;
+  defaultResult?: ResultItem | null;
 }
 
 export interface QueryContext {
@@ -207,6 +208,8 @@ export interface UiContextSuccessResponse {
 export interface QuerySuccessResponse {
   ok: true;
   results: ResultItem[];
+  defaultResult: ResultItem | null;
+  allowEmptySelection: boolean;
 }
 
 export interface SubmitSuccessResponse {

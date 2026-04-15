@@ -1,6 +1,6 @@
 import { MODES } from "../../../shared/constants.js";
 
-import type { QueryContext, QueryProvider, ResultItem } from "../../../shared/types.js";
+import type { QueryContext, QueryProvider, ResultItem, ResultSource } from "../../../shared/types.js";
 
 interface AutofillHeuristicDependencies {
   resolveResult?: (context: QueryContext) => Promise<ResultItem | null>;
@@ -9,12 +9,19 @@ interface AutofillHeuristicDependencies {
 export function createAutofillHeuristicProvider({
   resolveResult = async () => null
 }: AutofillHeuristicDependencies = {}): QueryProvider {
+  const localAutofillSources: ResultSource[] = ["tabs", "bookmarks", "history", "inputHistory"];
+
   return {
     id: "autofill-heuristic",
     kind: "heuristic",
     group: "heuristic",
     priority: 30,
-    isActive: (context) => context.mode !== MODES.TAB_SEARCH && context.classification !== "empty",
+    isActive: (context) => (
+      context.mode !== MODES.TAB_SEARCH
+      && context.classification !== "empty"
+      && context.classification !== "search"
+      && localAutofillSources.some((source) => context.allowedSources.includes(source))
+    ),
     start: async (context) => {
       const result = await resolveResult(context);
 
