@@ -140,55 +140,62 @@ describe("runQueryEngine", () => {
   });
 
   it("isolates provider failures and still returns healthy provider results", async () => {
-    const healthyHeuristic: QueryProvider = {
-      id: "fallback-heuristic",
-      kind: "heuristic",
-      group: "heuristic",
-      priority: 10,
-      isActive: () => true,
-      start: async () => [{
-        id: "fallback-result",
-        type: "search-action",
-        source: "searchAction",
-        queryText: "cats"
-      }]
-    };
+    const originalWarn = console.warn;
+    console.warn = () => {};
 
-    const failingNormal: QueryProvider = {
-      id: "suggestions-results",
-      kind: "normal",
-      group: "suggestions",
-      isActive: () => true,
-      start: async () => {
-        throw new Error("suggestions offline");
-      }
-    };
+    try {
+      const healthyHeuristic: QueryProvider = {
+        id: "fallback-heuristic",
+        kind: "heuristic",
+        group: "heuristic",
+        priority: 10,
+        isActive: () => true,
+        start: async () => [{
+          id: "fallback-result",
+          type: "search-action",
+          source: "searchAction",
+          queryText: "cats"
+        }]
+      };
 
-    const healthyNormal: QueryProvider = {
-      id: "history-results",
-      kind: "normal",
-      group: "history",
-      isActive: () => true,
-      start: async () => [{
-        id: "history-result",
-        type: "history",
-        source: "history",
-        url: "https://cats.example"
-      }]
-    };
+      const failingNormal: QueryProvider = {
+        id: "suggestions-results",
+        kind: "normal",
+        group: "suggestions",
+        isActive: () => true,
+        start: async () => {
+          throw new Error("suggestions offline");
+        }
+      };
 
-    const context = createQueryContext({
-      requestId: "engine-3",
-      mode: MODES.NEW_TAB,
-      rawInput: "cats",
-      currentTab: null,
-      settings,
-      permissions
-    });
+      const healthyNormal: QueryProvider = {
+        id: "history-results",
+        kind: "normal",
+        group: "history",
+        isActive: () => true,
+        start: async () => [{
+          id: "history-result",
+          type: "history",
+          source: "history",
+          url: "https://cats.example"
+        }]
+      };
 
-    const response = await runQueryEngine(context, [healthyHeuristic, failingNormal, healthyNormal]);
+      const context = createQueryContext({
+        requestId: "engine-3",
+        mode: MODES.NEW_TAB,
+        rawInput: "cats",
+        currentTab: null,
+        settings,
+        permissions
+      });
 
-    expect(response.defaultResult?.id).toBe("fallback-result");
-    expect(response.results.map((result) => result.id)).toEqual(["fallback-result", "history-result"]);
+      const response = await runQueryEngine(context, [healthyHeuristic, failingNormal, healthyNormal]);
+
+      expect(response.defaultResult?.id).toBe("fallback-result");
+      expect(response.results.map((result) => result.id)).toEqual(["fallback-result", "history-result"]);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });

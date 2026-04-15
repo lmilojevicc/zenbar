@@ -1,4 +1,5 @@
 import { isHeuristicProvider, sortProvidersByKind } from "./providers/base.js";
+import { muxQueryResults } from "./muxer.js";
 
 import type { QueryContext, QueryEngineResponse, QueryProvider, ResultItem } from "../shared/types.js";
 
@@ -36,9 +37,7 @@ export async function runQueryEngine(
   }
 
   const defaultResult = heuristicCandidates[0] ?? null;
-  const results = defaultResult
-    ? [defaultResult, ...normalCandidates]
-    : [...normalCandidates];
+  const results = muxQueryResults(context, heuristicCandidates, normalCandidates);
   const nextContext: QueryContext = {
     ...context,
     heuristicCandidates,
