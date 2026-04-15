@@ -23,6 +23,8 @@ export async function createOverlayApp(): Promise<OverlayApp> {
   host.style.opacity = "1";
   host.style.colorScheme = "dark";
   host.style.display = "none";
+  host.dataset.darkreaderIgnore = "true";
+  host.classList.add("darkreader-ignore");
 
   const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
 
@@ -31,6 +33,8 @@ export async function createOverlayApp(): Promise<OverlayApp> {
     styleLink.rel = "stylesheet";
     styleLink.href = chrome.runtime.getURL("styles/command.css");
     styleLink.dataset.zenbarStyle = "true";
+    styleLink.dataset.darkreaderIgnore = "true";
+    styleLink.classList.add("darkreader");
     shadowRoot.append(styleLink);
   }
 
