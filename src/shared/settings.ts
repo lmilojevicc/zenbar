@@ -19,7 +19,8 @@ export function mergeSettings(rawSettings: RawZenbarSettings = {}): ZenbarSettin
       ...defaults.weights,
       ...rawSettings.weights
     },
-    suggestionProvider: rawSettings.suggestionProvider === "duckduckgo" ? "duckduckgo" : "off"
+    suggestionProvider: rawSettings.suggestionProvider === "duckduckgo" ? "duckduckgo" : "off",
+    adaptiveHistoryEnabled: rawSettings.adaptiveHistoryEnabled === true
   };
 }
 

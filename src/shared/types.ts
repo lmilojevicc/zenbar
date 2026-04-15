@@ -1,6 +1,28 @@
 export type Mode = "current-tab" | "new-tab" | "tab-search";
 export type SuggestionProvider = "off" | "duckduckgo";
-export type ResultSource = "searchAction" | "tabs" | "bookmarks" | "history" | "suggestions" | "url";
+export type ResultSource = "searchAction" | "tabs" | "bookmarks" | "history" | "suggestions" | "url" | "inputHistory";
+export type QueryClassification = "empty" | "search" | "origin-like" | "url-like" | "deep-url";
+export type ProviderKind = "heuristic" | "normal";
+export type UserSelectionBehavior = "none" | "arrow" | "pointer";
+export type ProviderId =
+  | "autofill-heuristic"
+  | "history-url-heuristic"
+  | "fallback-heuristic"
+  | "tabs-results"
+  | "bookmarks-results"
+  | "history-results"
+  | "suggestions-results"
+  | "input-history-results"
+  | "unknown-provider";
+export type ResultGroup =
+  | "heuristic"
+  | "tabs"
+  | "bookmarks"
+  | "history"
+  | "suggestions"
+  | "input-history"
+  | "search"
+  | "url";
 
 export interface SettingsSources {
   tabs: boolean;
@@ -21,12 +43,14 @@ export interface ZenbarSettings {
   sources: SettingsSources;
   weights: SettingsWeights;
   suggestionProvider: SuggestionProvider;
+  adaptiveHistoryEnabled: boolean;
 }
 
 export interface RawZenbarSettings {
   sources?: Partial<SettingsSources>;
   weights?: Partial<SettingsWeights>;
   suggestionProvider?: string;
+  adaptiveHistoryEnabled?: boolean;
 }
 
 export interface PermissionState {
@@ -58,6 +82,11 @@ interface BaseResult {
   openWindowId?: number | null;
   pinned?: boolean;
   closeable?: boolean;
+  heuristic?: boolean;
+  group?: ResultGroup;
+  providerId?: ProviderId;
+  dedupeKey?: string;
+  suggestedIndex?: number;
 }
 
 export interface SearchActionResult extends BaseResult {
@@ -124,6 +153,45 @@ export interface QueryPayload extends OpenPayload {
 export interface SubmitPayload extends OpenPayload {
   rawQuery?: string;
   selectedResult?: ResultItem | null;
+}
+
+export interface QueryContext {
+  requestId: string;
+  clientId?: string;
+  mode: Mode;
+  rawInput: string;
+  trimmedInput: string;
+  normalizedInput: string;
+  strippedInput: string;
+  normalizedUrlCandidate: string;
+  classification: QueryClassification;
+  currentTab: chrome.tabs.Tab | null;
+  permissions: PermissionState;
+  settings: ZenbarSettings;
+  allowedSources: ResultSource[];
+  pendingProviderIds: ProviderId[];
+  heuristicCandidates: ResultItem[];
+  normalCandidates: ResultItem[];
+  heuristicResult: ResultItem | null;
+  defaultResult: ResultItem | null;
+  results: ResultItem[];
+  allowEmptySelection: boolean;
+}
+
+export interface QueryProvider {
+  id: ProviderId;
+  kind: ProviderKind;
+  group: ResultGroup;
+  priority?: number;
+  isActive: (context: QueryContext) => boolean | Promise<boolean>;
+  start: (context: QueryContext) => Promise<ResultItem[]>;
+}
+
+export interface QueryEngineResponse {
+  context: QueryContext;
+  results: ResultItem[];
+  defaultResult: ResultItem | null;
+  allowEmptySelection: boolean;
 }
 
 export interface ErrorResponse {

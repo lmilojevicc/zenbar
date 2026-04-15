@@ -20,7 +20,8 @@ describe("mergeSettings", () => {
         ...DEFAULT_SETTINGS.weights,
         tabs: 0.5
       },
-      suggestionProvider: "off"
+      suggestionProvider: "off",
+      adaptiveHistoryEnabled: false
     });
   });
 
@@ -28,5 +29,13 @@ describe("mergeSettings", () => {
     const raw = JSON.parse('{"suggestionProvider":"custom"}');
 
     expect(mergeSettings(raw).suggestionProvider).toBe("off");
+  });
+
+  it("defaults adaptive history to disabled", () => {
+    expect(mergeSettings({}).adaptiveHistoryEnabled).toBe(false);
+  });
+
+  it("preserves explicit adaptive history preference", () => {
+    expect(mergeSettings({ adaptiveHistoryEnabled: true }).adaptiveHistoryEnabled).toBe(true);
   });
 });

@@ -58,7 +58,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     suggestions: 0.84,
     currentWindowTabs: 0.35
   }),
-  suggestionProvider: "off"
+  suggestionProvider: "off",
+  adaptiveHistoryEnabled: false
 } satisfies ZenbarSettings);
 
 export const MAX_RESULTS = 9;
@@ -71,6 +72,7 @@ export const SOURCE_PRIORITY = Object.freeze({
   bookmarks: 4,
   history: 3,
   suggestions: 2,
+  inputHistory: 2,
   url: 1
 } satisfies Record<ResultSource, number>);
 

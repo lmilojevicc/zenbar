@@ -1,3 +1,7 @@
+import type { QueryClassification } from "./types.js";
+
+const EXPLICIT_PROTOCOL_RE = /^[a-z][a-z\d+.-]*:\/\//i;
+
 export function normalizeText(value: unknown): string {
   return String(value ?? "")
     .toLowerCase()
@@ -25,6 +29,59 @@ export function looksLikeUrl(input: unknown): boolean {
   }
 
   return /^[^\s]+\.[^\s]{2,}$/.test(value);
+}
+
+export function hasExplicitProtocol(input: unknown): boolean {
+  return EXPLICIT_PROTOCOL_RE.test(String(input ?? "").trim());
+}
+
+export function stripUrlPrefix(input: unknown): string {
+  return String(input ?? "")
+    .trim()
+    .replace(EXPLICIT_PROTOCOL_RE, "")
+    .replace(/^www\./i, "")
+    .replace(/\/$/, "");
+}
+
+export function stripPrefixAndTrim(input: unknown): string {
+  return stripUrlPrefix(input).trim();
+}
+
+export function looksLikeOrigin(input: unknown): boolean {
+  const raw = String(input ?? "").trim();
+
+  if (!raw || !looksLikeUrl(raw) || hasExplicitProtocol(raw) || /[?#]/.test(raw)) {
+    return false;
+  }
+
+  try {
+    const url = new URL(normalizeUrlCandidate(raw));
+    return url.pathname === "/" && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+export function classifyQueryInput(input: unknown): QueryClassification {
+  const raw = String(input ?? "").trim();
+
+  if (!raw) {
+    return "empty";
+  }
+
+  if (!looksLikeUrl(raw)) {
+    return "search";
+  }
+
+  if (hasDeepUrlPart(raw)) {
+    return hasExplicitProtocol(raw) ? "deep-url" : "deep-url";
+  }
+
+  if (looksLikeOrigin(raw)) {
+    return "origin-like";
+  }
+
+  return "url-like";
 }
 
 export function normalizeUrlCandidate(input: unknown): string {
@@ -183,4 +240,13 @@ function isBrowserIconUrl(url: string): boolean {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function hasDeepUrlPart(input: string): boolean {
+  try {
+    const url = new URL(normalizeUrlCandidate(input));
+    return url.pathname !== "/" || Boolean(url.search) || Boolean(url.hash);
+  } catch {
+    return false;
+  }
 }

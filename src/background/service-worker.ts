@@ -9,6 +9,14 @@ import {
 import { ensureSettings, getSettings } from "../shared/settings.js";
 import { extractDuckDuckGoSuggestionPhrases } from "../shared/duckduckgo.js";
 import {
+  activateTabWithChrome,
+  createSubmitHandlers,
+  findMatchingTabWithChrome,
+  inferImplicitSelection,
+  shouldReuseSubmitterTab as shouldReuseSubmitterTabForWindow,
+  type ExecutionResult
+} from "./submit.js";
+import {
   fuzzyScore,
   getFaviconUrl,
   looksLikeUrl,
@@ -58,20 +66,23 @@ interface CloseTabPayload {
   tabId?: number | null;
 }
 
-interface SubmitContext {
-  mode: Mode;
-  contextTabId: number | null;
-  contextWindowId: number | null;
-  rawQuery: string;
-  submitterTabId: number | null;
-  reuseSubmitterTab: boolean;
-}
-
-interface ExecutionResult {
-  reusedSubmitterTab: boolean;
-}
-
 const suggestionControllers = new Map<string, AbortController>();
+const submitHandlers = createSubmitHandlers({
+  activateTab: (tabId, windowId) => activateTabWithChrome(
+    tabId,
+    windowId,
+    (id) => chrome.tabs.get(id).catch(() => null),
+    (id, properties) => chrome.windows.update(id, properties),
+    (id, properties) => chrome.tabs.update(id, properties)
+  ),
+  createTab: (properties) => chrome.tabs.create(properties),
+  findMatchingTab: (url, excludedTabId, windowId) => findMatchingTabWithChrome(url, excludedTabId, windowId, queryTabsForWindowId),
+  getActiveTab,
+  getTab: (tabId) => chrome.tabs.get(tabId).catch(() => null),
+  searchQuery: (query) => chrome.search.query(query),
+  updateTab: (tabId, properties) => chrome.tabs.update(tabId, properties),
+  updateWindow: (windowId, properties) => chrome.windows.update(windowId, properties)
+});
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   await ensureSettings();
@@ -146,7 +157,7 @@ async function handleMessage(message: MessagePayload & { type: string }, sender:
     case "zenbar/toggle-pin-tab":
       return {
         ok: true,
-        result: await togglePinnedTab((message.payload as CloseTabPayload | undefined)?.tabId)
+        result: await submitHandlers.togglePinnedTab((message.payload as CloseTabPayload | undefined)?.tabId)
       };
 
     default:
@@ -585,11 +596,11 @@ async function submitSelection(payload: SubmitPayload | undefined, sender: chrom
       return { ok: true, closeSurface: false };
     }
 
-    await activateTab(selection.tabId, selection.windowId ?? selection.openWindowId ?? null);
+    await submitHandlers.activateTab(selection.tabId, selection.windowId ?? selection.openWindowId ?? null);
     return { ok: true, closeSurface: true };
   }
 
-  const execution = await executeSelection(selection, {
+  const execution = await submitHandlers.executeSelection(selection, {
     mode,
     contextTabId: payload?.contextTabId ?? null,
     contextWindowId: contextTab?.windowId ?? null,
@@ -602,205 +613,6 @@ async function submitSelection(payload: SubmitPayload | undefined, sender: chrom
     ok: true,
     closeSurface: !execution.reusedSubmitterTab
   };
-}
-
-function inferImplicitSelection(query: string): ResultItem | null {
-  if (!query) {
-    return null;
-  }
-
-  if (looksLikeUrl(query)) {
-    return {
-      id: `url:${normalizeUrlCandidate(query)}`,
-      type: "url",
-      source: "url",
-      url: normalizeUrlCandidate(query)
-    };
-  }
-
-  return {
-    id: `search:${query}`,
-    type: "search-action",
-    source: "searchAction",
-    title: `Search "${query}"`,
-    queryText: query
-  };
-}
-
-async function executeSelection(selection: ResultItem, context: SubmitContext): Promise<ExecutionResult> {
-  switch (selection.type) {
-    case "tab":
-      await activateTab(selection.tabId, selection.windowId ?? null);
-      return { reusedSubmitterTab: false };
-
-    case "bookmark":
-    case "history":
-    case "url":
-      return await openUrl(
-        selection.url,
-        context.mode,
-        context.contextTabId,
-        selection.openTabId,
-        selection.openWindowId,
-        context.contextWindowId,
-        context.submitterTabId,
-        context.reuseSubmitterTab
-      );
-
-    case "search-action":
-    case "suggestion":
-      return await executeSearch(
-        selection.queryText || context.rawQuery,
-        context.mode,
-        context.contextTabId,
-        context.submitterTabId,
-        context.reuseSubmitterTab
-      );
-  }
-
-  return { reusedSubmitterTab: false };
-}
-
-async function openUrl(
-  url: string | undefined,
-  mode: Mode,
-  contextTabId: number | null,
-  knownTabId?: number | null,
-  knownWindowId?: number | null,
-  currentWindowId?: number | null,
-  submitterTabId?: number | null,
-  reuseSubmitterTab = false
-): Promise<ExecutionResult> {
-  if (!url) {
-    return { reusedSubmitterTab: false };
-  }
-
-  if (mode === MODES.NEW_TAB) {
-    if (knownTabId) {
-      await activateTab(knownTabId, knownWindowId ?? null);
-      return { reusedSubmitterTab: false };
-    }
-
-    if (reuseSubmitterTab && submitterTabId) {
-      await chrome.tabs.update(submitterTabId, { url, active: true });
-      return { reusedSubmitterTab: true };
-    }
-
-    const matchingTab = await findMatchingTab(url, contextTabId, currentWindowId);
-
-    if (matchingTab?.id) {
-      await activateTab(matchingTab.id, matchingTab.windowId ?? null);
-      return { reusedSubmitterTab: false };
-    }
-
-    await chrome.tabs.create({ url, active: true });
-    return { reusedSubmitterTab: false };
-  }
-
-  if (contextTabId) {
-    await chrome.tabs.update(contextTabId, { url });
-    return { reusedSubmitterTab: false };
-  }
-
-  const activeTab = await getActiveTab();
-
-  if (activeTab?.id) {
-    await chrome.tabs.update(activeTab.id, { url });
-    return { reusedSubmitterTab: false };
-  }
-
-  await chrome.tabs.create({ url, active: true });
-  return { reusedSubmitterTab: false };
-}
-
-async function executeSearch(
-  text: string | undefined,
-  mode: Mode,
-  contextTabId: number | null,
-  submitterTabId: number | null,
-  reuseSubmitterTab: boolean
-): Promise<ExecutionResult> {
-  if (!text) {
-    return { reusedSubmitterTab: false };
-  }
-
-  if (mode === MODES.NEW_TAB) {
-    if (reuseSubmitterTab && submitterTabId) {
-      await chrome.search.query({
-        text,
-        tabId: submitterTabId
-      });
-      return { reusedSubmitterTab: true };
-    }
-
-    await chrome.search.query({
-      text,
-      disposition: "NEW_TAB"
-    });
-    return { reusedSubmitterTab: false };
-  }
-
-  if (contextTabId) {
-    await chrome.search.query({
-      text,
-      tabId: contextTabId
-    });
-    return { reusedSubmitterTab: false };
-  }
-
-  await chrome.search.query({
-    text,
-    disposition: "CURRENT_TAB"
-  });
-  return { reusedSubmitterTab: false };
-}
-
-async function activateTab(tabId: number | null | undefined, windowId: number | null | undefined): Promise<void> {
-  if (!tabId) {
-    return;
-  }
-
-  const targetTab = await chrome.tabs.get(tabId).catch(() => null);
-
-  if (!targetTab) {
-    return;
-  }
-
-  await chrome.windows.update(windowId || targetTab.windowId, { focused: true }).catch(() => {});
-  await chrome.tabs.update(targetTab.id, { active: true });
-}
-
-async function togglePinnedTab(tabId: number | null | undefined): Promise<TogglePinResult> {
-  if (!tabId) {
-    throw new Error("Missing tab id");
-  }
-
-  const tab = await chrome.tabs.get(tabId);
-  const updatedTab = await chrome.tabs.update(tab.id, {
-    pinned: !tab.pinned
-  });
-
-  if (!updatedTab || typeof updatedTab.id !== "number") {
-    throw new Error("Updated tab is missing an id");
-  }
-
-  return {
-    tabId: updatedTab.id,
-    pinned: Boolean(updatedTab.pinned)
-  };
-}
-
-async function findMatchingTab(url: string, excludedTabId: number | null | undefined, windowId: number | null | undefined): Promise<chrome.tabs.Tab | null> {
-  const tabs = await queryTabsForWindowId(windowId);
-  const comparableUrl = normalizeComparableUrl(url);
-
-  return tabs.find((tab) => {
-    if (!tab.url || !tab.id || tab.id === excludedTabId) {
-      return false;
-    }
-
-    return normalizeComparableUrl(tab.url) === comparableUrl;
-  }) || null;
 }
 
 async function resolveContextTab(contextTabId: number | null | undefined, sender: chrome.runtime.MessageSender): Promise<chrome.tabs.Tab | null> {
@@ -841,11 +653,7 @@ async function queryTabsForWindowId(windowId: number | null | undefined): Promis
 }
 
 function shouldReuseSubmitterTab(mode: Mode, sender: chrome.runtime.MessageSender): boolean {
-  if (mode !== MODES.NEW_TAB || !sender?.tab?.id || !sender.tab.url) {
-    return false;
-  }
-
-  return sender.tab.url.startsWith(chrome.runtime.getURL("ui/window.html"));
+  return shouldReuseSubmitterTabForWindow(mode, sender, chrome.runtime.getURL("ui/window.html"));
 }
 
 async function getPermissionState(): Promise<PermissionState> {
