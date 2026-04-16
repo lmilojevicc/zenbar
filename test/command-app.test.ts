@@ -6,6 +6,7 @@ import {
   getResultsFooterText,
   getCommandSurfaceOpenState,
   getCommandSurfaceStatusState,
+  shouldShowResultsHost,
   getVisibleDefaultResult,
   prioritizeTypedQueryResult
 } from "../src/ui/command-app.js";
@@ -204,6 +205,20 @@ describe("getCommandSurfaceOpenState", () => {
       submitting: false,
       statusMessage: ""
     });
+  });
+});
+
+describe("shouldShowResultsHost", () => {
+  it("hides the results area when idle with no results", () => {
+    expect(shouldShowResultsHost(false, 0)).toBe(false);
+  });
+
+  it("shows the results area while loading", () => {
+    expect(shouldShowResultsHost(true, 0)).toBe(true);
+  });
+
+  it("shows the results area when results exist", () => {
+    expect(shouldShowResultsHost(false, 1)).toBe(true);
   });
 });
 

@@ -194,9 +194,14 @@ export function mountCommandSurface({
 
   function renderResults(): void {
     renderChrome();
+    resultsHost.hidden = !shouldShowResultsHost(loading, results.length);
     resultsHost.textContent = "";
 
     resultsHost.classList.toggle("zenbar__results--busy", loading && results.length > 0);
+
+    if (resultsHost.hidden) {
+      return;
+    }
 
     if (loading && results.length > 0) {
       renderResultRows();
@@ -211,14 +216,6 @@ export function mountCommandSurface({
         <span>Looking for the best match for your current query.</span>
       `;
       resultsHost.append(loadingState);
-      return;
-    }
-
-    if (!results.length) {
-      const emptyState = document.createElement("div");
-      emptyState.className = "zenbar__empty";
-      emptyState.innerHTML = getEmptyStateMarkup();
-      resultsHost.append(emptyState);
       return;
     }
 
@@ -288,18 +285,6 @@ export function mountCommandSurface({
     if (activeRow) {
       activeRow.scrollIntoView({ block: "nearest" });
     }
-  }
-
-  function getEmptyStateMarkup(): string {
-    if (mode === MODES.TAB_SEARCH) {
-      return typedQuery.trim()
-        ? "<strong>No matching tabs</strong><span>Try a shorter title or URL fragment from this window.</span>"
-        : "<strong>Ready to jump</strong><span>Your other tabs in this window will appear here as soon as you type.</span>";
-    }
-
-    return typedQuery.trim()
-      ? "<strong>No direct matches yet</strong><span>Press Enter to use your typed query with your default search engine.</span>"
-      : "<strong>Start typing</strong><span>Search, navigate, or jump to a result from this calm command space.</span>";
   }
 
   function queueSearch(immediate = false): void {
@@ -687,6 +672,10 @@ export function getVisibleDefaultResult(selectionModel: SelectionModelState, all
   }
 
   return selectionModel.defaultResult;
+}
+
+export function shouldShowResultsHost(loading: boolean, resultCount: number): boolean {
+  return loading || resultCount > 0;
 }
 
 export function getResultsFooterText(mode: Mode): string {
