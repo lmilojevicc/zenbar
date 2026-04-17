@@ -161,6 +161,17 @@ select {
   gap: 24px;
 }
 
+.control-row--result .control-title-row {
+  align-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 38px;
+}
+
+.control-row--result h3 {
+  line-height: 1.15;
+}
+
 .result-row__content {
   display: flex;
   align-items: flex-start;
@@ -169,6 +180,8 @@ select {
 }
 
 .result-row__content > div {
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -184,7 +197,6 @@ select {
   justify-content: center;
   min-width: 38px;
   min-height: 38px;
-  margin-top: 2px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);

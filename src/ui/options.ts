@@ -127,7 +127,7 @@ function renderSources(): void {
 
   elements.sources.innerHTML = `
     <div class="stack">
-      <p class="note">Drag the result sources to control which rows surface first in Cmd+T and Cmd+L. Search and URL navigation stay fixed automatically.</p>
+      <p class="note">Drag the result sources to control which rows surface first in Cmd+T and Cmd+L.</p>
       <div id="result-source-order" class="result-panel result-panel--sortable">
         ${state.settings.resultSourceOrder.map((key) => renderReorderableResultRow(key)).join("")}
       </div>
