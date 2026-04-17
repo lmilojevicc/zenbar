@@ -209,6 +209,7 @@ export interface QuerySuccessResponse {
 export interface SubmitSuccessResponse {
   ok: true;
   closeSurface?: boolean;
+  navigationPending?: boolean;
 }
 
 export interface TogglePinResult {

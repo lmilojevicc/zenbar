@@ -61,6 +61,8 @@ export function mountCommandSurface({
   let selectionModel: SelectionModelState = createSelectionModel(MODES.CURRENT_TAB);
   let loading = false;
   let submitting = false;
+  let navigationPending = false;
+  let submitTargetText = "";
   let searchTimer: number | undefined;
   let searchVersion = 0;
   let statusMessage = "";
@@ -153,8 +155,10 @@ export function mountCommandSurface({
       results,
       loading,
       submitting,
+      navigationPending,
       statusMessage
     } = getCommandSurfaceOpenState(mode, currentTab));
+    submitTargetText = "";
     input.value = typedQuery;
     renderChrome();
     renderResults();
@@ -168,6 +172,8 @@ export function mountCommandSurface({
       mode,
       loading,
       submitting,
+      navigationPending,
+      submitTargetText,
       statusMessage
     });
     const isBusy = visualState.isBusy ? " zenbar__input-shell--busy" : "";
@@ -337,7 +343,10 @@ export function mountCommandSurface({
     typedQuery = input.value;
     hasUserEditedInput = true;
     selectionModel = resetSelectionForTypedInput(selectionModel);
+    navigationPending = false;
+    submitTargetText = "";
     statusMessage = "";
+    renderChrome();
     queueSearch(false);
   }
 
@@ -383,11 +392,23 @@ export function mountCommandSurface({
   }
 
   async function submitSelection(index?: number): Promise<void> {
-    if (submitting) {
+    if (!canStartSubmit(submitting, navigationPending)) {
       return;
     }
 
-    submitting = true;
+    const defaultSelection = getVisibleDefaultResult(selectionModel, mode !== MODES.CURRENT_TAB || hasUserEditedInput);
+    ({
+      submitting,
+      navigationPending
+    } = getSubmitStartState());
+    submitTargetText = getSubmitTargetText(
+      typeof index === "number"
+        ? results[index] || null
+        : selectionModel.explicitIndex !== null
+          ? getSelectedResult(selectionModel, results)
+          : defaultSelection,
+      typedQuery
+    );
     renderChrome();
     const explicitSelection = typeof index === "number"
       ? results[index] || null
@@ -402,26 +423,34 @@ export function mountCommandSurface({
         contextTabId,
         rawQuery: typedQuery,
         selectedResult: explicitSelection,
-        defaultResult: getVisibleDefaultResult(selectionModel, mode !== MODES.CURRENT_TAB || hasUserEditedInput)
+        defaultResult: defaultSelection
       }
     });
 
     if (!response.ok) {
       submitting = false;
+      submitTargetText = "";
       statusMessage = response.error || "Unable to open the selected result.";
       renderChrome();
       return;
     }
 
-    submitting = false;
-    statusMessage = "";
+    const successState = getSubmitSuccessState(response.closeSurface, response.navigationPending === true);
+    submitting = successState.submitting;
+    navigationPending = successState.navigationPending;
+    if (!navigationPending) {
+      submitTargetText = "";
+    }
+    statusMessage = successState.statusMessage;
 
-    if (response.closeSurface !== false) {
+    if (successState.shouldCloseSurface) {
       dismiss();
       return;
     }
 
-    renderChrome();
+    if (successState.shouldRenderChrome) {
+      renderChrome();
+    }
   }
 
   async function closeHighlightedTab(index?: number): Promise<void> {
@@ -633,6 +662,7 @@ export interface CommandSurfaceOpenState {
   results: ResultItem[];
   loading: boolean;
   submitting: boolean;
+  navigationPending: boolean;
   statusMessage: string;
 }
 
@@ -643,6 +673,7 @@ export function getCommandSurfaceOpenState(mode: Mode, currentTab: SerializedTab
     results: [],
     loading: false,
     submitting: false,
+    navigationPending: false,
     statusMessage: ""
   };
 }
@@ -688,20 +719,27 @@ export function getCommandSurfaceStatusState({
   mode,
   loading,
   submitting,
+  navigationPending,
+  submitTargetText,
   statusMessage
 }: {
   mode: Mode;
   loading: boolean;
   submitting: boolean;
+  navigationPending: boolean;
+  submitTargetText?: string;
   statusMessage: string;
 }): {
   helperText: string;
   inputIcon: InputIconKind;
   isBusy: boolean;
 } {
-  if (submitting) {
+  if (submitting || navigationPending) {
+    const actionLabel = mode === MODES.NEW_TAB ? "Opening in new tab" : "Opening in current tab";
+    const targetSuffix = submitTargetText ? `: ${submitTargetText}` : "...";
+
     return {
-      helperText: mode === MODES.NEW_TAB ? "Opening in new tab..." : "Opening in current tab...",
+      helperText: `${actionLabel}${targetSuffix}`,
       inputIcon: "spinner",
       isBusy: true
     };
@@ -712,6 +750,68 @@ export function getCommandSurfaceStatusState({
     inputIcon: "search",
     isBusy: loading
   };
+}
+
+export function getSubmitSuccessState(closeSurface: boolean | undefined, navigationPending: boolean): {
+  submitting: boolean;
+  navigationPending: boolean;
+  statusMessage: string;
+  shouldCloseSurface: boolean;
+  shouldRenderChrome: boolean;
+} {
+  if (closeSurface === false && navigationPending) {
+    return {
+      submitting: false,
+      navigationPending: true,
+      statusMessage: "",
+      shouldCloseSurface: false,
+      shouldRenderChrome: false
+    };
+  }
+
+  if (closeSurface === false) {
+    return {
+      submitting: false,
+      navigationPending: false,
+      statusMessage: "",
+      shouldCloseSurface: false,
+      shouldRenderChrome: true
+    };
+  }
+
+  return {
+    submitting: false,
+    navigationPending: false,
+    statusMessage: "",
+    shouldCloseSurface: true,
+    shouldRenderChrome: false
+  };
+}
+
+export function getSubmitStartState(): {
+  submitting: boolean;
+  navigationPending: boolean;
+} {
+  return {
+    submitting: true,
+    navigationPending: false
+  };
+}
+
+export function canStartSubmit(submitting: boolean, navigationPending: boolean): boolean {
+  return !submitting;
+}
+
+export function getSubmitTargetText(selection: ResultItem | null, rawQuery: string): string {
+  if (selection?.url) {
+    return selection.url;
+  }
+
+  if (selection?.queryText) {
+    return selection.queryText;
+  }
+
+  return rawQuery.trim();
 }
 
 function applyCommandInputState(input: HTMLInputElement, inputState: CommandInputState): void {

@@ -397,7 +397,7 @@ async function buildTabSearchResults(
     });
 }
 
-async function submitSelection(payload: SubmitPayload | undefined, sender: chrome.runtime.MessageSender): Promise<{ ok: true; closeSurface: boolean }> {
+async function submitSelection(payload: SubmitPayload | undefined, sender: chrome.runtime.MessageSender): Promise<{ ok: true; closeSurface: boolean; navigationPending?: boolean }> {
   const mode = payload?.mode ?? MODES.CURRENT_TAB;
   const rawQuery = String(payload?.rawQuery ?? "").trim();
   const selection = (payload?.selectedResult as ResultItem | null | undefined)
@@ -408,12 +408,12 @@ async function submitSelection(payload: SubmitPayload | undefined, sender: chrom
   const contextTab = await resolveContextTab(payload?.contextTabId, sender);
 
   if (!selection) {
-    return { ok: true, closeSurface: false };
+    return { ok: true, closeSurface: false, navigationPending: false };
   }
 
   if (mode === MODES.TAB_SEARCH) {
     if (selection.type !== "tab" || typeof selection.tabId !== "number") {
-      return { ok: true, closeSurface: false };
+      return { ok: true, closeSurface: false, navigationPending: false };
     }
 
     await submitHandlers.activateTab(selection.tabId, selection.windowId ?? selection.openWindowId ?? null);
@@ -439,7 +439,8 @@ async function submitSelection(payload: SubmitPayload | undefined, sender: chrom
 
   return {
     ok: true,
-    closeSurface: !execution.reusedSubmitterTab
+    closeSurface: !execution.reusedSubmitterTab,
+    navigationPending: execution.reusedSubmitterTab
   };
 }
 

@@ -2,9 +2,13 @@ import { describe, expect, it } from "bun:test";
 
 import { MODES } from "../src/shared/constants.js";
 import {
+  canStartSubmit,
   getCommandInputState,
   getResultsFooterText,
   getCommandSurfaceOpenState,
+  getSubmitTargetText,
+  getSubmitStartState,
+  getSubmitSuccessState,
   getCommandSurfaceStatusState,
   shouldShowResultsHost,
   getVisibleDefaultResult,
@@ -129,6 +133,7 @@ describe("getCommandSurfaceStatusState", () => {
       mode: MODES.NEW_TAB,
       loading: false,
       submitting: true,
+      navigationPending: false,
       statusMessage: ""
     })).toEqual({
       helperText: "Opening in new tab...",
@@ -142,6 +147,7 @@ describe("getCommandSurfaceStatusState", () => {
       mode: MODES.CURRENT_TAB,
       loading: false,
       submitting: true,
+      navigationPending: false,
       statusMessage: ""
     })).toEqual({
       helperText: "Opening in current tab...",
@@ -155,12 +161,129 @@ describe("getCommandSurfaceStatusState", () => {
       mode: MODES.NEW_TAB,
       loading: false,
       submitting: false,
+      navigationPending: false,
       statusMessage: "Unable to open the selected result."
     })).toEqual({
       helperText: "Unable to open the selected result.",
       inputIcon: "search",
       isBusy: false
     });
+  });
+
+  it("shows a spinner while fallback-tab navigation is still pending", () => {
+    expect(getCommandSurfaceStatusState({
+      mode: MODES.NEW_TAB,
+      loading: false,
+      submitting: false,
+      navigationPending: true,
+      submitTargetText: "",
+      statusMessage: ""
+    })).toEqual({
+      helperText: "Opening in new tab...",
+      inputIcon: "spinner",
+      isBusy: true
+    });
+  });
+
+  it("shows the destination text while opening a new tab", () => {
+    expect(getCommandSurfaceStatusState({
+      mode: MODES.NEW_TAB,
+      loading: false,
+      submitting: true,
+      navigationPending: false,
+      submitTargetText: "https://example.com/",
+      statusMessage: ""
+    })).toEqual({
+      helperText: "Opening in new tab: https://example.com/",
+      inputIcon: "spinner",
+      isBusy: true
+    });
+  });
+});
+
+describe("getSubmitTargetText", () => {
+  it("prefers the selected result url", () => {
+    expect(getSubmitTargetText({
+      id: "history:1",
+      type: "history",
+      source: "history",
+      url: "https://example.com/"
+    } as ResultItem, "cats")).toBe("https://example.com/");
+  });
+
+  it("falls back to the selected query text", () => {
+    expect(getSubmitTargetText({
+      id: "search:cats",
+      type: "search-action",
+      source: "searchAction",
+      queryText: "cats"
+    } as ResultItem, "cats")).toBe("cats");
+  });
+
+  it("falls back to the typed query when there is no selected result", () => {
+    expect(getSubmitTargetText(null, "  https://typed.example/  ")).toBe("https://typed.example/");
+  });
+});
+
+describe("getSubmitSuccessState", () => {
+  it("keeps submitting only when the fallback surface tab is still navigating", () => {
+    expect(getSubmitSuccessState(false, true)).toEqual({
+      submitting: false,
+      navigationPending: true,
+      statusMessage: "",
+      shouldCloseSurface: false,
+      shouldRenderChrome: false
+    });
+  });
+
+  it("clears submitting when the surface stays open without a pending navigation", () => {
+    expect(getSubmitSuccessState(false, false)).toEqual({
+      submitting: false,
+      navigationPending: false,
+      statusMessage: "",
+      shouldCloseSurface: false,
+      shouldRenderChrome: true
+    });
+  });
+
+  it("clears submitting and closes the surface when submit should dismiss", () => {
+    expect(getSubmitSuccessState(true, false)).toEqual({
+      submitting: false,
+      navigationPending: false,
+      statusMessage: "",
+      shouldCloseSurface: true,
+      shouldRenderChrome: false
+    });
+    expect(getSubmitSuccessState(undefined, false)).toEqual({
+      submitting: false,
+      navigationPending: false,
+      statusMessage: "",
+      shouldCloseSurface: true,
+      shouldRenderChrome: false
+    });
+  });
+});
+
+describe("getSubmitStartState", () => {
+  it("starts a new submit by clearing stale navigation pending state", () => {
+    expect(getSubmitStartState()).toEqual({
+      submitting: true,
+      navigationPending: false
+    });
+  });
+});
+
+describe("canStartSubmit", () => {
+  it("blocks submits while a request is in flight", () => {
+    expect(canStartSubmit(true, false)).toBe(false);
+  });
+
+  it("allows a new submit while fallback navigation is still pending", () => {
+    expect(canStartSubmit(false, true)).toBe(true);
+  });
+
+  it("allows submits once both busy states are clear", () => {
+    expect(canStartSubmit(false, false)).toBe(true);
   });
 });
 
@@ -174,12 +297,14 @@ describe("getCommandSurfaceOpenState", () => {
       results: [],
       loading: false,
       submitting: false,
+      navigationPending: false,
       statusMessage: ""
     });
     expect(getCommandSurfaceStatusState({
       mode: MODES.NEW_TAB,
       loading: state.loading,
       submitting: state.submitting,
+      navigationPending: state.navigationPending,
       statusMessage: state.statusMessage
     })).toEqual({
       helperText: "",
@@ -203,6 +328,7 @@ describe("getCommandSurfaceOpenState", () => {
       results: [],
       loading: false,
       submitting: false,
+      navigationPending: false,
       statusMessage: ""
     });
   });
