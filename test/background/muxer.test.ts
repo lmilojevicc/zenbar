@@ -14,7 +14,8 @@ const settings: ZenbarSettings = {
   },
   commandPosition: "center",
   suggestionProvider: "off",
-  adaptiveHistoryEnabled: false
+  adaptiveHistoryEnabled: false,
+  resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
 };
 
 const permissions: PermissionState = {
@@ -108,6 +109,104 @@ describe("muxQueryResults", () => {
     const results = muxQueryResults(context, [defaultResult], [historyResult, tabResult]);
 
     expect(results.map((result) => result.id)).toEqual(["search", "tab"]);
+  });
+
+  it("uses the saved result source order when ranking visible results", () => {
+    const context = createQueryContext({
+      requestId: "mux:ranked-order",
+      mode: MODES.NEW_TAB,
+      rawInput: "cats",
+      currentTab: null,
+      settings: {
+        ...settings,
+        resultSourceOrder: ["history", "tabs", "bookmarks", "input-history", "suggestions"]
+      },
+      permissions
+    });
+    const defaultResult = makeResult({
+      id: "search",
+      type: "search-action",
+      source: "searchAction",
+      queryText: "cats",
+      heuristic: true,
+      group: "heuristic",
+      providerId: "fallback-heuristic",
+      dedupeKey: "search:cats"
+    });
+    const tabResult = makeResult({
+      id: "tab",
+      type: "tab",
+      source: "tabs",
+      url: "https://cats.example/tab",
+      group: "tabs",
+      providerId: "tabs-results"
+    });
+    const bookmarkResult = makeResult({
+      id: "bookmark",
+      type: "bookmark",
+      source: "bookmarks",
+      url: "https://cats.example/bookmark",
+      group: "bookmarks",
+      providerId: "bookmarks-results"
+    });
+    const historyResult = makeResult({
+      id: "history",
+      type: "history",
+      source: "history",
+      url: "https://cats.example/history",
+      group: "history",
+      providerId: "history-results"
+    });
+
+    const results = muxQueryResults(context, [defaultResult], [bookmarkResult, tabResult, historyResult]);
+
+    expect(results.map((result) => result.id)).toEqual(["search", "history", "tab", "bookmark"]);
+  });
+
+  it("uses the saved result source order for dedupe winner precedence", () => {
+    const context = createQueryContext({
+      requestId: "mux:dedupe-order",
+      mode: MODES.NEW_TAB,
+      rawInput: "cats",
+      currentTab: null,
+      settings: {
+        ...settings,
+        resultSourceOrder: ["history", "tabs", "bookmarks", "input-history", "suggestions"]
+      },
+      permissions
+    });
+    const defaultResult = makeResult({
+      id: "search",
+      type: "search-action",
+      source: "searchAction",
+      queryText: "cats",
+      heuristic: true,
+      group: "heuristic",
+      providerId: "fallback-heuristic",
+      dedupeKey: "search:cats"
+    });
+    const tabResult = makeResult({
+      id: "tab",
+      type: "tab",
+      source: "tabs",
+      url: "https://cats.example/",
+      group: "tabs",
+      providerId: "tabs-results",
+      dedupeKey: "https://cats.example/"
+    });
+    const historyResult = makeResult({
+      id: "history",
+      type: "history",
+      source: "history",
+      url: "https://cats.example/",
+      group: "history",
+      providerId: "history-results",
+      dedupeKey: "https://cats.example/"
+    });
+
+    const results = muxQueryResults(context, [defaultResult], [tabResult, historyResult]);
+
+    expect(results.map((result) => result.id)).toEqual(["search", "history"]);
   });
 
   it("keeps alternate search rows above tabs/history and below the default heuristic", () => {

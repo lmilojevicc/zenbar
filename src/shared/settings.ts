@@ -1,5 +1,7 @@
-import { DEFAULT_SETTINGS, SETTINGS_KEY } from "./constants.js";
-import type { RawZenbarSettings, ZenbarSettings } from "./types.js";
+import { DEFAULT_RESULT_SOURCE_ORDER, DEFAULT_SETTINGS, SETTINGS_KEY } from "./constants.js";
+import type { RawZenbarSettings, ResultSourceOrderItem, ZenbarSettings } from "./types.js";
+
+let pendingSettingsWrite: Promise<ZenbarSettings> = Promise.resolve(cloneDefaultSettings());
 
 export function cloneDefaultSettings(): ZenbarSettings {
   return structuredClone(DEFAULT_SETTINGS);
@@ -16,42 +18,84 @@ export function mergeSettings(rawSettings: RawZenbarSettings = {}): ZenbarSettin
     },
     commandPosition: rawSettings.commandPosition === "top" ? "top" : "center",
     suggestionProvider: rawSettings.suggestionProvider === "duckduckgo" ? "duckduckgo" : "off",
-    adaptiveHistoryEnabled: rawSettings.adaptiveHistoryEnabled === true
+    adaptiveHistoryEnabled: rawSettings.adaptiveHistoryEnabled === true,
+    resultSourceOrder: normalizeResultSourceOrder(rawSettings.resultSourceOrder)
   };
 }
 
-export async function ensureSettings(): Promise<ZenbarSettings> {
-  const stored = await chrome.storage.local.get(SETTINGS_KEY);
-  const rawSettings = stored[SETTINGS_KEY] as RawZenbarSettings | null | undefined;
-  const merged = mergeSettings(rawSettings ?? {});
+function normalizeResultSourceOrder(rawOrder: RawZenbarSettings["resultSourceOrder"]): ResultSourceOrderItem[] {
+  const requestedOrder = Array.isArray(rawOrder) ? rawOrder : [];
+  const normalizedOrder: ResultSourceOrderItem[] = [];
+  const seen = new Set<ResultSourceOrderItem>();
 
-  if (JSON.stringify(rawSettings) !== JSON.stringify(merged)) {
-    await chrome.storage.local.set({ [SETTINGS_KEY]: merged });
+  for (const item of requestedOrder) {
+    if (!isResultSourceOrderItem(item) || seen.has(item)) {
+      continue;
+    }
+
+    normalizedOrder.push(item);
+    seen.add(item);
   }
 
-  return merged;
+  for (const item of DEFAULT_RESULT_SOURCE_ORDER) {
+    if (seen.has(item)) {
+      continue;
+    }
+
+    normalizedOrder.push(item);
+  }
+
+  return normalizedOrder;
+}
+
+function isResultSourceOrderItem(value: string): value is ResultSourceOrderItem {
+  return DEFAULT_RESULT_SOURCE_ORDER.includes(value as ResultSourceOrderItem);
+}
+
+export async function ensureSettings(): Promise<ZenbarSettings> {
+  return mergeSettings((await getStoredRawSettings()) ?? {});
 }
 
 export async function getSettings(): Promise<ZenbarSettings> {
-  const stored = await chrome.storage.local.get(SETTINGS_KEY);
-  return mergeSettings(stored[SETTINGS_KEY] as RawZenbarSettings | undefined);
+  const rawSettings = await getStoredRawSettings();
+  return mergeSettings(rawSettings);
 }
 
 export async function saveSettings(nextSettings: RawZenbarSettings): Promise<ZenbarSettings> {
+  return enqueueSettingsWrite(async () => await persistSettings(nextSettings));
+}
+
+export async function patchSettings(patch: RawZenbarSettings): Promise<ZenbarSettings> {
+  return enqueueSettingsWrite(async () => {
+    const current = mergeSettings(await getStoredRawSettings());
+
+    return await persistSettings({
+      ...current,
+      ...patch,
+      sources: {
+        ...current.sources,
+        ...patch.sources
+      }
+    });
+  });
+}
+
+async function getStoredRawSettings(): Promise<RawZenbarSettings | undefined> {
+  const stored = await chrome.storage.local.get(SETTINGS_KEY);
+  return stored[SETTINGS_KEY] as RawZenbarSettings | undefined;
+}
+
+async function persistSettings(nextSettings: RawZenbarSettings): Promise<ZenbarSettings> {
   const merged = mergeSettings(nextSettings);
   await chrome.storage.local.set({ [SETTINGS_KEY]: merged });
   return merged;
 }
 
-export async function patchSettings(patch: RawZenbarSettings): Promise<ZenbarSettings> {
-  const current = await getSettings();
+function enqueueSettingsWrite(operation: () => Promise<ZenbarSettings>): Promise<ZenbarSettings> {
+  const nextWrite = pendingSettingsWrite
+    .catch(() => cloneDefaultSettings())
+    .then(operation);
 
-  return saveSettings({
-    ...current,
-    ...patch,
-    sources: {
-      ...current.sources,
-      ...patch.sources
-    }
-  });
+  pendingSettingsWrite = nextWrite;
+  return nextWrite;
 }

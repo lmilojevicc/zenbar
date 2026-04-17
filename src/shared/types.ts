@@ -2,6 +2,7 @@ export type Mode = "current-tab" | "new-tab" | "tab-search";
 export type CommandPosition = "center" | "top";
 export type SuggestionProvider = "off" | "duckduckgo";
 export type ResultSource = "searchAction" | "tabs" | "bookmarks" | "history" | "suggestions" | "url" | "inputHistory";
+export type ResultSourceOrderItem = "input-history" | "tabs" | "bookmarks" | "history" | "suggestions";
 export type QueryClassification = "empty" | "search" | "origin-like" | "url-like" | "deep-url";
 export type ProviderKind = "heuristic" | "normal";
 export type UserSelectionBehavior = "none" | "arrow" | "pointer";
@@ -35,6 +36,7 @@ export interface ZenbarSettings {
   commandPosition: CommandPosition;
   suggestionProvider: SuggestionProvider;
   adaptiveHistoryEnabled: boolean;
+  resultSourceOrder: ResultSourceOrderItem[];
 }
 
 export interface RawZenbarSettings {
@@ -42,6 +44,7 @@ export interface RawZenbarSettings {
   commandPosition?: string;
   suggestionProvider?: string;
   adaptiveHistoryEnabled?: boolean;
+  resultSourceOrder?: string[];
 }
 
 export interface PermissionState {

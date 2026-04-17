@@ -12,7 +12,8 @@ const settings: ZenbarSettings = {
   },
   commandPosition: "center",
   suggestionProvider: "duckduckgo",
-  adaptiveHistoryEnabled: false
+  adaptiveHistoryEnabled: false,
+  resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
 };
 
 const permissions: PermissionState = {

@@ -1,5 +1,11 @@
 import { MODES } from "../../../shared/constants.js";
-import { fuzzyScore, getFaviconUrl, normalizeComparableUrl } from "../../../shared/utils.js";
+import {
+  fuzzyScore,
+  getFaviconUrl,
+  normalizeComparableUrl,
+  normalizeText,
+  stripPrefixAndTrim
+} from "../../../shared/utils.js";
 
 import type { QueryContext, QueryProvider, ResultItem } from "../../../shared/types.js";
 
@@ -27,7 +33,7 @@ export function createTabsResultsProvider({
       return tabs
         .filter((tab) => typeof tab.id === "number" && tab.id !== context.currentTab?.id && Boolean(tab.url))
         .map((tab): ResultItem | null => {
-          const baseScore = fuzzyScore(context.trimmedInput, tab.title, tab.url);
+          const baseScore = getBlendedTabMatchScore(context.trimmedInput, tab.title, tab.url);
 
           if (!tab.id || !tab.url || baseScore <= 0) {
             return null;
@@ -53,4 +59,29 @@ export function createTabsResultsProvider({
         .filter((result) => result !== null);
     }
   };
+}
+
+function getBlendedTabMatchScore(query: string, title: string | undefined, url: string | undefined): number {
+  const titleScore = fuzzyScore(query, title);
+
+  if (titleScore > 0) {
+    return titleScore;
+  }
+
+  const normalizedQuery = normalizeText(query);
+  const strippedUrl = stripPrefixAndTrim(url);
+  const normalizedUrl = normalizeText(strippedUrl);
+  const urlTokens = normalizedUrl.split(/[^a-z0-9]+/).filter(Boolean);
+
+  const hasStrongUrlMatch = Boolean(normalizedQuery) && (
+    normalizedUrl.startsWith(normalizedQuery)
+    || urlTokens.some((token) => token.startsWith(normalizedQuery))
+    || (normalizedQuery.length >= 4 && normalizedUrl.includes(normalizedQuery))
+  );
+
+  if (!hasStrongUrlMatch) {
+    return 0;
+  }
+
+  return fuzzyScore(query, strippedUrl);
 }

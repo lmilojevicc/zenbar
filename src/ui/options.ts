@@ -1,23 +1,24 @@
+import Sortable from "sortablejs";
+
 import {
   COMMAND_TO_MODE,
+  DEFAULT_RESULT_SOURCE_ORDER,
   DEFAULT_SETTINGS,
   DUCKDUCKGO_ORIGIN,
   MODE_LABELS,
   SHORTCUTS_URL
 } from "../shared/constants.js";
+import { createResultSourceSortableOptions } from "./result-source-sortable.js";
 import { getSettings, mergeSettings, patchSettings, saveSettings } from "../shared/settings.js";
-import type { CommandPosition, PermissionState, ZenbarSettings } from "../shared/types.js";
+import type {
+  CommandPosition,
+  PermissionState,
+  ResultSourceOrderItem,
+  ZenbarSettings
+} from "../shared/types.js";
 
-type SourceKey = keyof ZenbarSettings["sources"];
 type PermissionKey = "bookmarks" | "history";
 type Platform = string;
-
-interface SourceDefinition {
-  key: SourceKey;
-  title: string;
-  description: string;
-  permission: PermissionKey | null;
-}
 
 interface CommandState {
   name: string;
@@ -32,26 +33,28 @@ interface OptionsState {
   commands: CommandState[];
 }
 
-const sourceDefinitions: SourceDefinition[] = [
-  {
-    key: "tabs",
+const reorderableResultDefinitions: Record<ResultSourceOrderItem, { title: string; description: string }> = {
+  "input-history": {
+    title: "Learned picks",
+    description: "Use your local Zenbar selections to surface the result you usually choose for the same query."
+  },
+  tabs: {
     title: "Open tabs",
-    description: "Blend matching open tabs into the main results.",
-    permission: null
+    description: "Blend matching tabs from the current window into Cmd+T and Cmd+L results."
   },
-  {
-    key: "bookmarks",
+  bookmarks: {
     title: "Bookmarks",
-    description: "Optional. Requests bookmark access before results appear.",
-    permission: "bookmarks"
+    description: "Include bookmark matches when bookmark access is granted."
   },
-  {
-    key: "history",
+  history: {
     title: "History",
-    description: "Optional. Requests browser history access before results appear.",
-    permission: "history"
+    description: "Include browser history matches when history access is granted."
+  },
+  suggestions: {
+    title: "Suggestions",
+    description: "Optional DuckDuckGo suggestions for typed searches. Final search execution still uses your default engine."
   }
-];
+};
 
 const state: OptionsState = {
   settings: structuredClone(DEFAULT_SETTINGS),
@@ -63,6 +66,8 @@ const state: OptionsState = {
   },
   commands: []
 };
+
+let resultSourceSortable: Sortable | null = null;
 
 function mustGetElement<T extends HTMLElement>(id: string, ctor: { new (): T }): T {
   const element = document.getElementById(id);
@@ -76,8 +81,6 @@ function mustGetElement<T extends HTMLElement>(id: string, ctor: { new (): T }):
 
 const elements = {
   sources: mustGetElement("sources", HTMLElement),
-  suggestions: mustGetElement("suggestions", HTMLElement),
-  adaptiveHistory: mustGetElement("adaptive-history", HTMLElement),
   appearance: mustGetElement("appearance", HTMLElement),
   shortcuts: mustGetElement("shortcuts", HTMLElement),
   status: mustGetElement("status", HTMLElement),
@@ -113,44 +116,61 @@ async function refresh(): Promise<void> {
 
 function render(): void {
   renderSources();
-  renderSuggestions();
-  renderAdaptiveHistory();
   renderAppearance();
   renderShortcuts();
+  applyAutoGridSpans();
 }
 
 function renderSources(): void {
-  elements.sources.innerHTML = sourceDefinitions
-    .map((source) => {
-      const enabled = state.settings.sources[source.key];
-      const permissionGranted = source.permission ? state.permissions[source.permission] : true;
-      const status = permissionGranted ? "Access enabled" : source.permission ? "Permission needed" : "Always available";
-      const action = source.permission && !permissionGranted
-        ? `<button class="ghost-button" type="button" data-request-permission="${source.permission}">Grant Access</button>`
-        : "";
+  resultSourceSortable?.destroy();
+  resultSourceSortable = null;
 
-      return `
-        <article class="control-row">
-          <div>
-            <div class="control-title-row">
-              <h3>${source.title}</h3>
-              <span class="pill${permissionGranted ? "" : " pill--muted"}">${status}</span>
-            </div>
-            <p>${source.description}</p>
-          </div>
-          <div class="control-actions">
-            ${action}
-            <label class="toggle">
-              <input type="checkbox" data-source-toggle="${source.key}" ${enabled ? "checked" : ""} />
-              <span>${enabled ? "On" : "Off"}</span>
-            </label>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  elements.sources.innerHTML = `
+    <div class="stack">
+      <p class="note">Drag the result sources to control which rows surface first in Cmd+T and Cmd+L. Search and URL navigation stay fixed automatically.</p>
+      <div id="result-source-order" class="result-panel result-panel--sortable">
+        ${state.settings.resultSourceOrder.map((key) => renderReorderableResultRow(key)).join("")}
+      </div>
+    </div>
+  `;
 
-  elements.sources.querySelectorAll<HTMLInputElement>("[data-source-toggle]").forEach((input) => {
+  bindResultToggleEvents();
+  bindPermissionEvents();
+  bindAdaptiveHistoryEvents();
+  initializeResultSourceSorting();
+}
+
+function renderReorderableResultRow(key: ResultSourceOrderItem): string {
+  const definition = reorderableResultDefinitions[key];
+  const enabled = isResultSourceEnabled(key);
+  const pill = getResultSourcePill(key);
+  const actionMarkup = renderResultSourceAction(key);
+
+  return `
+    <article class="control-row control-row--result control-row--sortable" data-order-key="${key}">
+      <div class="result-row__content">
+        <span class="drag-handle" data-drag-handle="true" aria-hidden="true">⋮⋮</span>
+        <div>
+          <div class="control-title-row">
+            <h3>${escapeHtml(definition.title)}</h3>
+            <span class="pill${pill.muted ? " pill--muted" : ""}">${escapeHtml(pill.label)}</span>
+          </div>
+          <p>${escapeHtml(definition.description)}</p>
+        </div>
+      </div>
+      <div class="control-actions">
+        ${actionMarkup}
+        <label class="toggle">
+          <input type="checkbox" data-result-toggle="${key}" ${enabled ? "checked" : ""} />
+          <span>${enabled ? "On" : "Off"}</span>
+        </label>
+      </div>
+    </article>
+  `;
+}
+
+function bindResultToggleEvents(): void {
+  elements.sources.querySelectorAll<HTMLInputElement>("[data-result-toggle]").forEach((input) => {
     input.addEventListener("change", async (event: Event) => {
       const target = event.currentTarget;
 
@@ -158,23 +178,54 @@ function renderSources(): void {
         return;
       }
 
-      const key = target.dataset.sourceToggle as SourceKey | undefined;
+      const key = target.dataset.resultToggle;
 
-      if (!key) {
+      if (!isResultSourceOrderItem(key)) {
         return;
       }
 
       const checked = target.checked;
+
+      if (key === "suggestions") {
+        if (checked && !state.permissions.duckduckgo) {
+          const granted = await requestDuckDuckGoPermission();
+
+          if (!granted) {
+            target.checked = false;
+            setStatus("DuckDuckGo host access was not granted.", true);
+            return;
+          }
+        }
+
+        state.settings = await patchSettings({
+          suggestionProvider: checked ? "duckduckgo" : "off"
+        });
+        await refresh();
+        setStatus(checked ? "DuckDuckGo suggestions enabled." : "Remote suggestions disabled.");
+        return;
+      }
+
+      if (key === "input-history") {
+        state.settings = await patchSettings({
+          adaptiveHistoryEnabled: checked
+        });
+        renderSources();
+        setStatus(checked ? "Learned picks enabled." : "Learned picks disabled.");
+        return;
+      }
+
       state.settings = await patchSettings({
         sources: {
           [key]: checked
         }
       });
-      render();
+      renderSources();
       setStatus(`${labelForKey(key)} ${checked ? "enabled" : "disabled"}.`);
     });
   });
+}
 
+function bindPermissionEvents(): void {
   elements.sources.querySelectorAll<HTMLButtonElement>("[data-request-permission]").forEach((button) => {
     button.addEventListener("click", async (event: Event) => {
       const target = event.currentTarget;
@@ -194,135 +245,156 @@ function renderSources(): void {
       setStatus(granted ? `${labelForKey(permission)} access granted.` : `${labelForKey(permission)} access was not granted.`, !granted);
     });
   });
-}
 
-function renderSuggestions(): void {
-  const provider = state.settings.suggestionProvider;
-  const hasAccess = state.permissions.duckduckgo;
-
-  elements.suggestions.innerHTML = `
-    <div class="stack">
-      <label class="field">
-        <span>Provider</span>
-        <select id="suggestion-provider">
-          <option value="off" ${provider === "off" ? "selected" : ""}>Off</option>
-          <option value="duckduckgo" ${provider === "duckduckgo" ? "selected" : ""}>DuckDuckGo</option>
-        </select>
-      </label>
-      <p class="note">
-        Remote suggestions are optional. If enabled, typed queries may be sent to DuckDuckGo for suggestions, but final searches still open with your browser default engine.
-      </p>
-      <div class="inline-actions">
-        <span class="pill${hasAccess ? "" : " pill--muted"}">${hasAccess ? "Host access enabled" : "Host access not granted"}</span>
-        ${hasAccess ? "" : '<button id="grant-ddg" class="ghost-button" type="button">Enable Host Access</button>'}
-      </div>
-    </div>
-  `;
-
-  const providerSelect = elements.suggestions.querySelector<HTMLSelectElement>("#suggestion-provider");
-
-  if (!providerSelect) {
-    return;
-  }
-
-  providerSelect.addEventListener("change", async (event: Event) => {
-    const target = event.currentTarget;
-
-    if (!(target instanceof HTMLSelectElement)) {
-      return;
-    }
-
-    const nextValue = target.value === "duckduckgo" ? "duckduckgo" : "off";
-
-    if (nextValue === "duckduckgo" && !state.permissions.duckduckgo) {
-      const granted = await requestDuckDuckGoPermission();
-
-      if (!granted) {
-        target.value = "off";
-        setStatus("DuckDuckGo host access was not granted.", true);
-        return;
-      }
-    }
-
-    state.settings = await patchSettings({
-      suggestionProvider: nextValue
-    });
-    await refresh();
-    setStatus(nextValue === "off" ? "Remote suggestions disabled." : "DuckDuckGo suggestions enabled.");
-  });
-
-  const grantButton = elements.suggestions.querySelector<HTMLButtonElement>("#grant-ddg");
-
-  if (grantButton) {
-    grantButton.addEventListener("click", async () => {
+  elements.sources.querySelectorAll<HTMLButtonElement>("[data-request-ddg]").forEach((button) => {
+    button.addEventListener("click", async () => {
       const granted = await requestDuckDuckGoPermission();
       await refresh();
       setStatus(granted ? "DuckDuckGo host access granted." : "DuckDuckGo host access was not granted.", !granted);
     });
+  });
+}
+
+function bindAdaptiveHistoryEvents(): void {
+  const clearButton = elements.sources.querySelector<HTMLButtonElement>("[data-clear-adaptive-history]");
+
+  if (!clearButton) {
+    return;
+  }
+
+  clearButton.addEventListener("click", async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: "zenbar/clear-adaptive-history"
+    }) as { ok?: boolean; error?: string };
+
+    if (!response?.ok) {
+      setStatus(response?.error || "Unable to clear learned history.", true);
+      return;
+    }
+
+    setStatus("Cleared learned history.");
+  });
+}
+
+function initializeResultSourceSorting(): void {
+  const list = elements.sources.querySelector<HTMLElement>("#result-source-order");
+
+  if (!list) {
+    return;
+  }
+
+  resultSourceSortable = Sortable.create(list, createResultSourceSortableOptions({
+    onEnd: async () => {
+      const nextOrder = Array.from(list.querySelectorAll<HTMLElement>("[data-order-key]"))
+        .map((item) => item.dataset.orderKey)
+        .filter(isResultSourceOrderItem);
+
+      if (hasSameResultOrder(state.settings.resultSourceOrder, nextOrder)) {
+        return;
+      }
+
+      try {
+        state.settings = await patchSettings({
+          resultSourceOrder: nextOrder
+        });
+        setStatus("Results order updated.");
+      } catch (error: unknown) {
+        await refresh();
+        setStatus(error instanceof Error ? error.message : "Unable to save results order.", true);
+      }
+    }
+  }));
+}
+
+function applyAutoGridSpans(): void {
+  const cards = Array.from(document.querySelectorAll<HTMLElement>(".options-grid > .card"));
+  let pendingCards: HTMLElement[] = [];
+
+  const flushPendingCards = () => {
+    if (pendingCards.length % 2 === 1) {
+      pendingCards.at(-1)?.classList.add("card--auto-full");
+    }
+
+    pendingCards = [];
+  };
+
+  for (const card of cards) {
+    card.classList.remove("card--auto-full");
+
+    if (card.classList.contains("card--full")) {
+      flushPendingCards();
+      continue;
+    }
+
+    pendingCards.push(card);
+  }
+
+  flushPendingCards();
+}
+
+function isResultSourceEnabled(key: ResultSourceOrderItem): boolean {
+  switch (key) {
+    case "input-history":
+      return state.settings.adaptiveHistoryEnabled;
+    case "tabs":
+      return state.settings.sources.tabs;
+    case "bookmarks":
+      return state.settings.sources.bookmarks;
+    case "history":
+      return state.settings.sources.history;
+    case "suggestions":
+      return state.settings.suggestionProvider === "duckduckgo";
   }
 }
 
-function renderAdaptiveHistory(): void {
-  const enabled = state.settings.adaptiveHistoryEnabled;
-
-  elements.adaptiveHistory.innerHTML = `
-    <div class="stack">
-      <article class="control-row">
-        <div>
-          <div class="control-title-row">
-            <h3>Improve ranking from my picks</h3>
-            <span class="pill${enabled ? "" : " pill--muted"}">${enabled ? "Enabled" : "Disabled"}</span>
-          </div>
-          <p>When enabled, Zenbar stores your chosen results locally in this browser profile and uses them to improve future ranking.</p>
-        </div>
-        <div class="control-actions">
-          <label class="toggle">
-            <input type="checkbox" id="adaptive-history-toggle" ${enabled ? "checked" : ""} />
-            <span>${enabled ? "On" : "Off"}</span>
-          </label>
-        </div>
-      </article>
-      <div class="inline-actions">
-        <button id="clear-adaptive-history" class="ghost-button" type="button">Clear Learned History</button>
-      </div>
-      <p class="note">Adaptive learning stays local to Zenbar. It is separate from optional browser history permission.</p>
-    </div>
-  `;
-
-  const toggle = elements.adaptiveHistory.querySelector<HTMLInputElement>("#adaptive-history-toggle");
-
-  if (toggle) {
-    toggle.addEventListener("change", async (event: Event) => {
-      const target = event.currentTarget;
-
-      if (!(target instanceof HTMLInputElement)) {
-        return;
-      }
-
-      state.settings = await patchSettings({
-        adaptiveHistoryEnabled: target.checked
-      });
-      renderAdaptiveHistory();
-      setStatus(target.checked ? "Adaptive ranking enabled." : "Adaptive ranking disabled.");
-    });
+function getResultSourcePill(key: ResultSourceOrderItem): { label: string; muted: boolean } {
+  switch (key) {
+    case "input-history":
+      return { label: "Local only", muted: false };
+    case "tabs":
+      return { label: "Always available", muted: false };
+    case "bookmarks":
+      return state.permissions.bookmarks
+        ? { label: "Access enabled", muted: false }
+        : { label: "Permission needed", muted: true };
+    case "history":
+      return state.permissions.history
+        ? { label: "Access enabled", muted: false }
+        : { label: "Permission needed", muted: true };
+    case "suggestions":
+      return state.permissions.duckduckgo
+        ? { label: "Host access enabled", muted: false }
+        : { label: "Host access not granted", muted: true };
   }
+}
 
-  const clearButton = elements.adaptiveHistory.querySelector<HTMLButtonElement>("#clear-adaptive-history");
-
-  if (clearButton) {
-    clearButton.addEventListener("click", async () => {
-      const response = await chrome.runtime.sendMessage({
-        type: "zenbar/clear-adaptive-history"
-      }) as { ok?: boolean; error?: string };
-
-      if (!response?.ok) {
-        setStatus(response?.error || "Unable to clear learned history.", true);
-        return;
-      }
-
-      setStatus("Cleared learned history.");
-    });
+function renderResultSourceAction(key: ResultSourceOrderItem): string {
+  switch (key) {
+    case "input-history":
+      return '<button class="ghost-button" type="button" data-clear-adaptive-history="true">Clear Learned History</button>';
+    case "bookmarks":
+      return state.permissions.bookmarks
+        ? ""
+        : '<button class="ghost-button" type="button" data-request-permission="bookmarks">Grant Access</button>';
+    case "history":
+      return state.permissions.history
+        ? ""
+        : '<button class="ghost-button" type="button" data-request-permission="history">Grant Access</button>';
+    case "suggestions":
+      return state.permissions.duckduckgo
+        ? ""
+        : '<button class="ghost-button" type="button" data-request-ddg="true">Enable Host Access</button>';
+    case "tabs":
+      return "";
   }
+}
+
+function isResultSourceOrderItem(value: string | undefined): value is ResultSourceOrderItem {
+  return Boolean(value) && DEFAULT_RESULT_SOURCE_ORDER.includes(value as ResultSourceOrderItem);
+}
+
+function hasSameResultOrder(left: ResultSourceOrderItem[], right: ResultSourceOrderItem[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 function renderAppearance(): void {
@@ -485,7 +557,20 @@ function setStatus(message: string, isError = false): void {
 }
 
 function labelForKey(key: string): string {
-  return sourceDefinitions.find((source) => source.key === key)?.title || key;
+  switch (key) {
+    case "tabs":
+      return reorderableResultDefinitions.tabs.title;
+    case "bookmarks":
+      return reorderableResultDefinitions.bookmarks.title;
+    case "history":
+      return reorderableResultDefinitions.history.title;
+    case "suggestions":
+      return reorderableResultDefinitions.suggestions.title;
+    case "input-history":
+      return reorderableResultDefinitions["input-history"].title;
+    default:
+      return key;
+  }
 }
 
 function renderShortcutMarkup(shortcut: string, platform: Platform): string {

@@ -1,4 +1,4 @@
-import type { Mode, ResultSource, ZenbarSettings } from "./types.js";
+import type { Mode, ResultSource, ResultSourceOrderItem, ZenbarSettings } from "./types.js";
 
 interface ModeMeta {
   label: string;
@@ -44,6 +44,14 @@ export const MODE_LABELS: Record<Mode, string> = Object.freeze(
 
 export const SETTINGS_KEY = "zenbar.settings.v1";
 
+export const DEFAULT_RESULT_SOURCE_ORDER = [
+  "input-history",
+  "tabs",
+  "bookmarks",
+  "history",
+  "suggestions"
+] as const satisfies readonly ResultSourceOrderItem[];
+
 export const DEFAULT_SETTINGS = Object.freeze({
   sources: Object.freeze({
     tabs: true,
@@ -52,7 +60,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   }),
   commandPosition: "center",
   suggestionProvider: "off",
-  adaptiveHistoryEnabled: false
+  adaptiveHistoryEnabled: false,
+  resultSourceOrder: [...DEFAULT_RESULT_SOURCE_ORDER]
 } satisfies ZenbarSettings);
 
 export const MAX_RESULTS = 9;

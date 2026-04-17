@@ -104,7 +104,8 @@ describe("createSubmitHandlers", () => {
         sources: { tabs: true, bookmarks: true, history: true },
         commandPosition: "center",
         suggestionProvider: "off",
-        adaptiveHistoryEnabled: true
+        adaptiveHistoryEnabled: true,
+        resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
       },
       recordSelection: async (query, result) => {
         calls.push({ query, resultId: result.id });
@@ -124,7 +125,8 @@ describe("createSubmitHandlers", () => {
         sources: { tabs: true, bookmarks: true, history: true },
         commandPosition: "center",
         suggestionProvider: "off",
-        adaptiveHistoryEnabled: true
+        adaptiveHistoryEnabled: true,
+        resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
       },
       recordSelection: async (query, result) => {
         calls.push({ query, resultId: result.id });

@@ -15,7 +15,8 @@ const baseSettings: ZenbarSettings = {
   },
   commandPosition: "center",
   suggestionProvider: "off",
-  adaptiveHistoryEnabled: false
+  adaptiveHistoryEnabled: false,
+  resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
 };
 
 const permissions: PermissionState = {

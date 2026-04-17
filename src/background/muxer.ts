@@ -1,16 +1,6 @@
 import { MAX_RESULTS } from "../shared/constants.js";
 
-import type { QueryContext, ResultGroup, ResultItem } from "../shared/types.js";
-
-const GROUP_ORDER: ResultGroup[] = [
-  "search",
-  "input-history",
-  "tabs",
-  "bookmarks",
-  "history",
-  "suggestions",
-  "url"
-];
+import type { QueryContext, ResultGroup, ResultItem, ResultSourceOrderItem } from "../shared/types.js";
 
 export function muxQueryResults(
   context: QueryContext,
@@ -18,7 +8,7 @@ export function muxQueryResults(
   normalCandidates: ResultItem[]
 ): ResultItem[] {
   const defaultResult = heuristicCandidates[0] ?? null;
-  const sortedNormalCandidates = [...normalCandidates].sort(compareCandidates);
+  const sortedNormalCandidates = [...normalCandidates].sort((left, right) => compareCandidates(left, right, context.settings.resultSourceOrder));
   const visibleResults: ResultItem[] = defaultResult ? [defaultResult] : [];
   const seenKeys = new Set<string>();
 
@@ -44,8 +34,8 @@ export function muxQueryResults(
   return visibleResults.slice(0, MAX_RESULTS);
 }
 
-function compareCandidates(left: ResultItem, right: ResultItem): number {
-  const groupDelta = getGroupRank(left.group) - getGroupRank(right.group);
+function compareCandidates(left: ResultItem, right: ResultItem, resultSourceOrder: ResultSourceOrderItem[]): number {
+  const groupDelta = getGroupRank(left.group, resultSourceOrder) - getGroupRank(right.group, resultSourceOrder);
 
   if (groupDelta !== 0) {
     return groupDelta;
@@ -62,7 +52,16 @@ function compareCandidates(left: ResultItem, right: ResultItem): number {
   );
 }
 
-function getGroupRank(group: ResultItem["group"]): number {
-  const index = GROUP_ORDER.indexOf(group ?? "history");
-  return index === -1 ? GROUP_ORDER.length : index;
+function getGroupRank(group: ResultItem["group"], resultSourceOrder: ResultSourceOrderItem[]): number {
+  const groupOrder = createGroupOrder(resultSourceOrder);
+  const index = groupOrder.indexOf(group ?? "history");
+  return index === -1 ? groupOrder.length : index;
+}
+
+function createGroupOrder(resultSourceOrder: ResultSourceOrderItem[]): ResultGroup[] {
+  return [
+    "search",
+    ...resultSourceOrder,
+    "url"
+  ];
 }

@@ -14,7 +14,8 @@ const enabledSettings: ZenbarSettings = {
   },
   commandPosition: "center",
   suggestionProvider: "off",
-  adaptiveHistoryEnabled: true
+  adaptiveHistoryEnabled: true,
+  resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
 };
 
 const disabledSettings: ZenbarSettings = {

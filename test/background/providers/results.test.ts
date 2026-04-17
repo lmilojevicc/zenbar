@@ -18,7 +18,8 @@ const settings: ZenbarSettings = {
   },
   commandPosition: "center",
   suggestionProvider: "duckduckgo",
-  adaptiveHistoryEnabled: true
+  adaptiveHistoryEnabled: true,
+  resultSourceOrder: ["input-history", "tabs", "bookmarks", "history", "suggestions"]
 };
 
 const permissions: PermissionState = {
@@ -66,6 +67,44 @@ describe("results providers", () => {
       url: "https://cats.example",
       providerId: "tabs-results",
       group: "tabs"
+    });
+  });
+
+  it("does not surface tabs from weak URL-only subsequence matches", async () => {
+    const provider = createTabsResultsProvider({
+      queryTabsForWindow: async () => [
+        {
+          id: 2,
+          windowId: 10,
+          url: "https://developer.chrome.com/docs",
+          title: "Docs",
+          favIconUrl: ""
+        } as chrome.tabs.Tab
+      ]
+    });
+
+    expect(await provider.start(createContext("op"))).toEqual([]);
+  });
+
+  it("keeps tabs that match the typed URL text directly", async () => {
+    const provider = createTabsResultsProvider({
+      queryTabsForWindow: async () => [
+        {
+          id: 2,
+          windowId: 10,
+          url: "https://open.spotify.com/collection/tracks",
+          title: "Music",
+          favIconUrl: ""
+        } as chrome.tabs.Tab
+      ]
+    });
+
+    const [result] = await provider.start(createContext("open"));
+
+    expect(result).toMatchObject({
+      type: "tab",
+      source: "tabs",
+      url: "https://open.spotify.com/collection/tracks"
     });
   });
 
