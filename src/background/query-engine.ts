@@ -8,32 +8,21 @@ export async function runQueryEngine(
   providers: QueryProvider[]
 ): Promise<QueryEngineResponse> {
   const sortedProviders = sortProvidersByKind(providers);
+  const heuristicProviders = sortedProviders.filter(isHeuristicProvider);
+  const normalProviders = sortedProviders.filter((provider) => !isHeuristicProvider(provider));
   const heuristicCandidates: ResultItem[] = [];
   const normalCandidates: ResultItem[] = [];
 
-  for (const provider of sortedProviders) {
-    try {
-      if (!(await provider.isActive(context))) {
-        continue;
-      }
+  for (const provider of heuristicProviders) {
+    heuristicCandidates.push(...await runProvider(context, provider));
+  }
 
-      const results = await provider.start(context);
-      const enrichedResults = results.map((result) => ({
-        ...result,
-        heuristic: result.heuristic ?? isHeuristicProvider(provider),
-        group: result.group ?? provider.group,
-        providerId: result.providerId ?? provider.id,
-        dedupeKey: result.dedupeKey ?? result.url ?? result.queryText ?? result.id
-      }));
+  const normalResultBatches = await Promise.all(
+    normalProviders.map((provider) => runProvider(context, provider))
+  );
 
-      if (isHeuristicProvider(provider)) {
-        heuristicCandidates.push(...enrichedResults);
-      } else {
-        normalCandidates.push(...enrichedResults);
-      }
-    } catch (error) {
-      console.warn(`Query provider failed: ${provider.id}`, error);
-    }
+  for (const batch of normalResultBatches) {
+    normalCandidates.push(...batch);
   }
 
   const results = muxQueryResults(context, heuristicCandidates, normalCandidates);
@@ -54,4 +43,25 @@ export async function runQueryEngine(
     defaultResult,
     allowEmptySelection: nextContext.allowEmptySelection
   };
+}
+
+async function runProvider(context: QueryContext, provider: QueryProvider): Promise<ResultItem[]> {
+  try {
+    if (!(await provider.isActive(context))) {
+      return [];
+    }
+
+    const results = await provider.start(context);
+
+    return results.map((result) => ({
+      ...result,
+      heuristic: result.heuristic ?? isHeuristicProvider(provider),
+      group: result.group ?? provider.group,
+      providerId: result.providerId ?? provider.id,
+      dedupeKey: result.dedupeKey ?? result.url ?? result.queryText ?? result.id
+    }));
+  } catch (error) {
+    console.warn(`Query provider failed: ${provider.id}`, error);
+    return [];
+  }
 }

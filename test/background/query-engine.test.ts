@@ -223,4 +223,69 @@ describe("runQueryEngine", () => {
       console.warn = originalWarn;
     }
   });
+
+  it("runs normal providers in parallel while preserving provider-order candidates", async () => {
+    const events: string[] = [];
+    let resolveSlowProvider: (results: Awaited<ReturnType<QueryProvider["start"]>>) => void = () => {};
+    const slowProviderResults = new Promise<Awaited<ReturnType<QueryProvider["start"]>>>((resolve) => {
+      resolveSlowProvider = resolve;
+    });
+
+    const slowNormal: QueryProvider = {
+      id: "history-results",
+      kind: "normal",
+      group: "history",
+      isActive: () => true,
+      start: async () => {
+        events.push("slow:start");
+        return await slowProviderResults;
+      }
+    };
+
+    const fastNormal: QueryProvider = {
+      id: "bookmarks-results",
+      kind: "normal",
+      group: "bookmarks",
+      isActive: () => true,
+      start: async () => {
+        events.push("fast:start");
+        return [{
+          id: "fast-result",
+          type: "bookmark",
+          source: "bookmarks",
+          url: "https://fast.example/"
+        }];
+      }
+    };
+
+    const context = createQueryContext({
+      requestId: "engine-5",
+      mode: MODES.NEW_TAB,
+      rawInput: "cats",
+      currentTab: null,
+      settings,
+      permissions
+    });
+
+    const responsePromise = runQueryEngine(context, [slowNormal, fastNormal]);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events).toEqual(["slow:start", "fast:start"]);
+
+    resolveSlowProvider([{
+      id: "slow-result",
+      type: "history",
+      source: "history",
+      url: "https://slow.example/"
+    }]);
+
+    const response = await responsePromise;
+
+    expect(response.context.normalCandidates.map((result) => result.id)).toEqual([
+      "slow-result",
+      "fast-result"
+    ]);
+  });
 });

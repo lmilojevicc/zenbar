@@ -11,6 +11,7 @@ import type {
   TogglePinResponse,
   UiContextResponse
 } from "../shared/types.js";
+import { stripPrefixAndTrim } from "../shared/utils.js";
 import {
   applyQueryResultState,
   createSelectionModel,
@@ -26,6 +27,8 @@ import { createIcon } from "./icons.js";
 type SurfaceKind = "overlay" | "window";
 type BadgeKind = "tab" | "bookmark" | "pin" | "history";
 type InputIconKind = "search" | "spinner";
+
+const QUERY_DEBOUNCE_MS = 90;
 
 interface MountCommandSurfaceOptions {
   root: HTMLElement;
@@ -297,7 +300,7 @@ export function mountCommandSurface({
     if (searchTimer !== undefined) {
       window.clearTimeout(searchTimer);
     }
-    searchTimer = window.setTimeout(runSearch, immediate ? 0 : 140);
+    searchTimer = window.setTimeout(runSearch, immediate ? 0 : QUERY_DEBOUNCE_MS);
   }
 
   async function runSearch(): Promise<void> {
@@ -353,15 +356,17 @@ export function mountCommandSurface({
   async function handleKeydown(event: KeyboardEvent): Promise<void> {
     if (event.key === "ArrowDown" && results.length) {
       event.preventDefault();
+      const previousIndex = getHighlightedIndex(selectionModel, results);
       selectionModel = moveSelection(selectionModel, results, 1);
-      renderResults();
+      syncHighlightedResult(previousIndex);
       return;
     }
 
     if (event.key === "ArrowUp" && results.length) {
       event.preventDefault();
+      const previousIndex = getHighlightedIndex(selectionModel, results);
       selectionModel = moveSelection(selectionModel, results, -1);
-      renderResults();
+      syncHighlightedResult(previousIndex);
       return;
     }
 
@@ -568,9 +573,44 @@ export function mountCommandSurface({
     const nextIndex = Number(trigger.dataset.resultIndex);
 
     if (nextIndex !== getHighlightedIndex(selectionModel, results)) {
+      const previousIndex = getHighlightedIndex(selectionModel, results);
       selectionModel = setExplicitSelection(selectionModel, nextIndex, "pointer");
-      renderResults();
+      syncHighlightedResult(previousIndex);
     }
+  }
+
+  function syncHighlightedResult(previousIndex: number | null): void {
+    renderChrome();
+
+    if (resultsHost.hidden) {
+      return;
+    }
+
+    const nextIndex = getHighlightedIndex(selectionModel, results);
+
+    updateResultRowSelection(previousIndex, false);
+    updateResultRowSelection(nextIndex, true);
+
+    if (nextIndex !== null) {
+      resultsHost
+        .querySelector<HTMLElement>(`[data-result-index="${nextIndex}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function updateResultRowSelection(index: number | null, selected: boolean): void {
+    if (index === null) {
+      return;
+    }
+
+    const row = resultsHost.querySelector<HTMLElement>(`[data-result-index="${index}"]`);
+
+    if (!row) {
+      return;
+    }
+
+    row.classList.toggle("zenbar-result-row--active", selected);
+    row.setAttribute("aria-selected", selected ? "true" : "false");
   }
 
   function stopKeyboardEventPropagation(event: Event): void {
@@ -680,21 +720,57 @@ export function getCommandSurfaceOpenState(mode: Mode, currentTab: SerializedTab
 
 export function getCommandInputState({
   typedQuery,
-  selectionModel: _selectionModel,
-  results: _results,
-  allowDefaultPreview: _allowDefaultPreview
+  selectionModel,
+  results,
+  allowDefaultPreview
 }: {
   typedQuery: string;
   selectionModel: SelectionModelState;
   results: ResultItem[];
   allowDefaultPreview: boolean;
 }): CommandInputState {
+  const previewResult = getInputPreviewResult(selectionModel, results, allowDefaultPreview);
+  const previewValue = previewResult ? getInputPreviewValue(previewResult) : "";
+
+  if (previewValue) {
+    return {
+      value: previewValue,
+      selectionStart: previewValue.length,
+      selectionEnd: previewValue.length,
+      previewResult
+    };
+  }
+
   return {
     value: typedQuery,
     selectionStart: null,
     selectionEnd: null,
     previewResult: null
   };
+}
+
+function getInputPreviewResult(
+  selectionModel: SelectionModelState,
+  results: ResultItem[],
+  allowDefaultPreview: boolean
+): ResultItem | null {
+  if (!allowDefaultPreview || selectionModel.mode === MODES.TAB_SEARCH || selectionModel.explicitIndex === null) {
+    return null;
+  }
+
+  return getSelectedResult(selectionModel, results);
+}
+
+function getInputPreviewValue(result: ResultItem): string {
+  if (result.queryText) {
+    return result.queryText;
+  }
+
+  if (result.url) {
+    return stripPrefixAndTrim(result.url);
+  }
+
+  return "";
 }
 
 export function getVisibleDefaultResult(selectionModel: SelectionModelState, allowDefaultPreview: boolean): ResultItem | null {

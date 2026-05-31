@@ -53,6 +53,14 @@ const plainHistoryResult: ResultItem = {
   url: "https://plain.example/"
 };
 
+const suggestionResult: ResultItem = {
+  id: "suggestion:opencode app",
+  type: "suggestion",
+  source: "suggestions",
+  title: "opencode app",
+  queryText: "opencode app"
+};
+
 describe("prioritizeTypedQueryResult", () => {
   it("moves the exact typed query search action to the top for new-tab mode", () => {
     const historyResult = {
@@ -369,7 +377,7 @@ describe("getCommandInputState", () => {
     });
   });
 
-  it("keeps the typed query when an arrow-selected result carries completion metadata", () => {
+  it("previews an arrow-selected URL result in the input", () => {
     const selectionModel = setExplicitSelection(
       applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
         results: [defaultAutofillResult, secondAutofillResult],
@@ -386,14 +394,14 @@ describe("getCommandInputState", () => {
       results: [defaultAutofillResult, secondAutofillResult],
       allowDefaultPreview: true
     })).toEqual({
-      value: "yor",
-      selectionStart: null,
-      selectionEnd: null,
-      previewResult: null
+      value: "yorkdocs.example",
+      selectionStart: 16,
+      selectionEnd: 16,
+      previewResult: secondAutofillResult
     });
   });
 
-  it("keeps the typed query when pointer movement highlights another row", () => {
+  it("previews a pointer-selected URL result in the input", () => {
     const selectionModel = setExplicitSelection(
       applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
         results: [defaultAutofillResult, secondAutofillResult],
@@ -410,7 +418,111 @@ describe("getCommandInputState", () => {
       results: [defaultAutofillResult, secondAutofillResult],
       allowDefaultPreview: true
     })).toEqual({
-      value: "yor",
+      value: "yorkdocs.example",
+      selectionStart: 16,
+      selectionEnd: 16,
+      previewResult: secondAutofillResult
+    });
+  });
+
+  it("previews an arrow-selected search suggestion in the input", () => {
+    const selectionModel = setExplicitSelection(
+      applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
+        results: [plainHistoryResult, suggestionResult],
+        defaultResult: null,
+        allowEmptySelection: true
+      }),
+      1,
+      "arrow"
+    );
+
+    expect(getCommandInputState({
+      typedQuery: "opencode",
+      selectionModel,
+      results: [plainHistoryResult, suggestionResult],
+      allowDefaultPreview: true
+    })).toEqual({
+      value: "opencode app",
+      selectionStart: 12,
+      selectionEnd: 12,
+      previewResult: suggestionResult
+    });
+  });
+
+  it("previews a pointer-selected search suggestion in the input", () => {
+    const selectionModel = setExplicitSelection(
+      applyQueryResultState(createSelectionModel(MODES.NEW_TAB), {
+        results: [plainHistoryResult, suggestionResult],
+        defaultResult: null,
+        allowEmptySelection: true
+      }),
+      1,
+      "pointer"
+    );
+
+    expect(getCommandInputState({
+      typedQuery: "opencode",
+      selectionModel,
+      results: [plainHistoryResult, suggestionResult],
+      allowDefaultPreview: true
+    })).toEqual({
+      value: "opencode app",
+      selectionStart: 12,
+      selectionEnd: 12,
+      previewResult: suggestionResult
+    });
+  });
+
+  it("keeps the typed query when tab-search selection highlights a tab", () => {
+    const tabResult: ResultItem = {
+      id: "tab:42",
+      type: "tab",
+      source: "tabs",
+      title: "OpenCode Docs",
+      url: "https://opencode.ai/docs",
+      tabId: 42
+    };
+    const selectionModel = setExplicitSelection(
+      applyQueryResultState(createSelectionModel(MODES.TAB_SEARCH), {
+        results: [tabResult],
+        defaultResult: null,
+        allowEmptySelection: false
+      }),
+      0,
+      "arrow"
+    );
+
+    expect(getCommandInputState({
+      typedQuery: "open",
+      selectionModel,
+      results: [tabResult],
+      allowDefaultPreview: true
+    })).toEqual({
+      value: "open",
+      selectionStart: null,
+      selectionEnd: null,
+      previewResult: null
+    });
+  });
+
+  it("suppresses suggestion previews while current-tab input has not been edited", () => {
+    const selectionModel = setExplicitSelection(
+      applyQueryResultState(createSelectionModel(MODES.CURRENT_TAB), {
+        results: [suggestionResult],
+        defaultResult: null,
+        allowEmptySelection: true
+      }),
+      0,
+      "arrow"
+    );
+
+    expect(getCommandInputState({
+      typedQuery: "https://current.example/",
+      selectionModel,
+      results: [suggestionResult],
+      allowDefaultPreview: false
+    })).toEqual({
+      value: "https://current.example/",
       selectionStart: null,
       selectionEnd: null,
       previewResult: null

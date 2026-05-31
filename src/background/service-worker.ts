@@ -63,6 +63,8 @@ interface CloseTabPayload {
 }
 
 const suggestionControllers = new Map<string, AbortController>();
+
+type QueryTabsForWindow = (currentTab: chrome.tabs.Tab | null) => Promise<chrome.tabs.Tab[]>;
 const adaptiveHistoryStore = createAdaptiveHistoryStore();
 const submitHandlers = createSubmitHandlers({
   activateTab: (tabId, windowId) => activateTabWithChrome(
@@ -228,13 +230,17 @@ async function openFallbackPage(mode: Mode, tab: chrome.tabs.Tab | null): Promis
 }
 
 async function getUiContext(payload: OpenPayload | undefined, sender: chrome.runtime.MessageSender): Promise<UiContext> {
-  const currentTab = await resolveContextTab(payload?.contextTabId, sender);
+  const [currentTab, settings, permissions] = await Promise.all([
+    resolveContextTab(payload?.contextTabId, sender),
+    getSettings(),
+    getPermissionState()
+  ]);
 
   return {
     mode: payload?.mode ?? MODES.CURRENT_TAB,
     currentTab: serializeTab(currentTab),
-    settings: await getSettings(),
-    permissions: await getPermissionState()
+    settings,
+    permissions
   };
 }
 
@@ -244,10 +250,10 @@ async function getResults(
 ): Promise<{ results: ResultItem[]; defaultResult: ResultItem | null; allowEmptySelection: boolean }> {
   const mode = payload?.mode ?? MODES.CURRENT_TAB;
   const query = String(payload?.query ?? "");
-  const currentTab = await resolveContextTab(payload?.contextTabId, sender);
-  const settings = await getSettings();
 
   if (mode === MODES.TAB_SEARCH) {
+    const currentTab = await resolveContextTab(payload?.contextTabId, sender);
+
     return {
       results: await buildTabSearchResults(query, currentTab),
       defaultResult: null,
@@ -255,7 +261,11 @@ async function getResults(
     };
   }
 
-  const permissions = await getPermissionState();
+  const [currentTab, settings, permissions] = await Promise.all([
+    resolveContextTab(payload?.contextTabId, sender),
+    getSettings(),
+    getPermissionState()
+  ]);
   const context = createQueryContext({
     requestId: `${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
     clientId: payload?.clientId,
@@ -276,6 +286,8 @@ async function getResults(
 }
 
 function createUrlbarProviders(context: ReturnType<typeof createQueryContext>) {
+  const cachedQueryTabsForWindow = createQueryTabsForWindowCache(queryTabsForWindow);
+
   return [
     createHistoryUrlHeuristicProvider({
       resolveResult: resolveHistoryUrlHeuristicResult
@@ -283,18 +295,37 @@ function createUrlbarProviders(context: ReturnType<typeof createQueryContext>) {
     createFallbackHeuristicProvider(),
     createInputHistoryResultsProvider(adaptiveHistoryStore),
     createTabsResultsProvider({
-      queryTabsForWindow
+      queryTabsForWindow: cachedQueryTabsForWindow
     }),
     createBookmarksResultsProvider({
-      queryTabsForWindow
+      queryTabsForWindow: cachedQueryTabsForWindow
     }),
     createHistoryResultsProvider({
-      queryTabsForWindow
+      queryTabsForWindow: cachedQueryTabsForWindow
     }),
     createSuggestionsResultsProvider({
       fetchSuggestions: (query) => fetchDuckDuckGoSuggestions(query, context.clientId)
     })
   ];
+}
+
+function createQueryTabsForWindowCache(queryTabs: QueryTabsForWindow): QueryTabsForWindow {
+  const cachedQueries = new Map<string, Promise<chrome.tabs.Tab[]>>();
+
+  return (currentTab) => {
+    const cacheKey = typeof currentTab?.windowId === "number"
+      ? `window:${currentTab.windowId}`
+      : "current";
+    const cachedQuery = cachedQueries.get(cacheKey);
+
+    if (cachedQuery) {
+      return cachedQuery;
+    }
+
+    const query = queryTabs(currentTab);
+    cachedQueries.set(cacheKey, query);
+    return query;
+  };
 }
 
 async function resolveHistoryUrlHeuristicResult(context: ReturnType<typeof createQueryContext>): Promise<ResultItem | null> {
